@@ -1,0 +1,10 @@
+vendor/
+node_modules/
+dist/
+test-results/
+playwright-report/
+.phpunit.cache/
+composer.lock
+.env
+.env.playwright
+.rehearsal/
