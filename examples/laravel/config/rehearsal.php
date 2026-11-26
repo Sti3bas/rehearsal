@@ -10,6 +10,7 @@ use Sti3bas\Rehearsal\Reverb;
 use Sti3bas\Rehearsal\Scout;
 
 $engine = env('REHEARSAL_INTEGRATION_SCOUT');
+$serviceHost = env('REHEARSAL_INTEGRATION_SERVICE_HOST', '127.0.0.1');
 
 return [
     'integrations' => [
@@ -21,11 +22,11 @@ return [
         'scout' => $engine ? Scout::class : false,
         'reverb' => env('REHEARSAL_INTEGRATION_REVERB') === true ? Reverb::class : false,
     ],
-    'mailpit' => ['api' => 'http://127.0.0.1:18025', 'smtp_port' => 11025],
+    'mailpit' => ['api' => "http://$serviceHost:18025", 'smtp_port' => 11025],
     'reverb' => ['origin' => 'http://127.0.0.1:18080', 'server' => env('REHEARSAL_REVERB_SERVER', false)],
     'scout' => [
         'engine' => $engine,
-        'origin' => $engine === 'typesense' ? 'http://127.0.0.1:18108' : 'http://127.0.0.1:17700',
+        'origin' => $engine === 'typesense' ? "http://$serviceHost:18108" : 'http://127.0.0.1:17700',
         'admin_key' => 'rehearsal_test_only',
         'models' => [User::class],
     ],

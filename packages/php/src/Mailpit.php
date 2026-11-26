@@ -28,7 +28,7 @@ final class Mailpit implements Integration
         config([
             'mail.default' => 'rehearsal-mailpit',
             'mail.mailers.rehearsal-mailpit' => [
-                'transport' => 'smtp', 'scheme' => 'smtp', 'host' => trim($origin['host'], '[]'),
+                'transport' => 'smtp', 'scheme' => 'smtp', 'host' => $origin['host'],
                 'port' => $port, 'timeout' => 5,
             ],
         ]);

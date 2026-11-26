@@ -2,6 +2,12 @@ import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { expect, test } from "@sti3bas/rehearsal";
 
+test("sends mail over IPv6 loopback", async ({ laravel }) => {
+  test.skip(process.env.REHEARSAL_E2E_SERVICE_HOST !== "[::1]", "IPv6-specific SMTP regression.");
+  await laravel.operation("probe.mail", { title: "IPv6 SMTP" });
+  await expect.poll(() => laravel.operation("probe.inbox")).toEqual(["IPv6 SMTP"]);
+});
+
 for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
   test("isolates Scout and Mailpit for " + name, async ({ laravel }, info) => {
     const title = "Probe " + name;

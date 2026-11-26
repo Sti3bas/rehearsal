@@ -97,16 +97,19 @@ jobs:
       - run: npm ci && npm run build
       - run: npx playwright install chromium --only-shell --with-deps
       - name: Start disposable services
+        env:
+          SERVICE_HOST: ${{ matrix.scout == 'typesense' && '[::1]' || '127.0.0.1' }}
         run: |
           export REHEARSAL_UID="$(id -u)" REHEARSAL_GID="$(id -g)"
           REVERB_SCALING_ENABLED=true docker compose -f examples/laravel/compose.integrations.yml up --build --detach
-          curl --retry 15 --retry-delay 1 --retry-all-errors --max-time 3 -fsS http://127.0.0.1:18025/api/v1/messages >/dev/null
-          curl --retry 15 --retry-delay 1 --retry-all-errors --max-time 3 -fsS http://127.0.0.1:18108/health >/dev/null
+          curl --globoff --retry 15 --retry-delay 1 --retry-all-errors --max-time 3 -fsS "http://$SERVICE_HOST:18025/api/v1/messages" >/dev/null
+          curl --globoff --retry 15 --retry-delay 1 --retry-all-errors --max-time 3 -fsS "http://$SERVICE_HOST:18108/health" >/dev/null
           curl --retry 15 --retry-delay 1 --retry-all-errors --max-time 3 -fsS http://127.0.0.1:17700/health >/dev/null
           curl --retry 15 --retry-delay 1 --retry-all-errors --max-time 3 -sS http://127.0.0.1:18080 >/dev/null
       - run: npm run e2e -- services.spec.ts
         env:
           REHEARSAL_E2E_SCOUT: ${{ matrix.scout }}
+          REHEARSAL_E2E_SERVICE_HOST: ${{ matrix.scout == 'typesense' && '[::1]' || '127.0.0.1' }}
           REHEARSAL_E2E_WORKERS: '4'
       - if: matrix.scout == 'database'
         run: npm run e2e -- reverb.spec.ts

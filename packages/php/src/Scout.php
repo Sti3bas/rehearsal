@@ -42,7 +42,7 @@ final class Scout implements Integration
         } else {
             config(['scout.typesense.client-settings' => [
                 'api_key' => $state['key']['value'],
-                'nodes' => [['host' => trim($parts['host'], '[]'), 'port' => $parts['port'] ?? 80, 'protocol' => 'http']],
+                'nodes' => [['host' => $parts['host'], 'port' => $parts['port'] ?? 80, 'protocol' => 'http']],
                 'connection_timeout_seconds' => 5,
                 'num_retries' => 0,
             ]]);

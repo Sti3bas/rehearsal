@@ -5,12 +5,14 @@ import { fileURLToPath } from "node:url";
 const engine = process.env.REHEARSAL_E2E_ENGINE ?? "sqlite";
 const port = Number(process.env.REHEARSAL_E2E_PORT ?? 8100);
 const scout = process.env.REHEARSAL_E2E_SCOUT;
+const serviceHost = process.env.REHEARSAL_E2E_SERVICE_HOST;
 const reverb = process.env.REHEARSAL_E2E_REVERB === "true";
 const ssrPort = process.env.REHEARSAL_E2E_NUXT_PORT;
 const laravel = laravelServer({
   port,
   integrations: {
     ...(scout ? { REHEARSAL_INTEGRATION_SCOUT: scout } : {}),
+    ...(serviceHost ? { REHEARSAL_INTEGRATION_SERVICE_HOST: serviceHost } : {}),
     ...(reverb ? { REHEARSAL_INTEGRATION_REVERB: "true" } : {}),
   },
   database: engine === "sqlite" ? {} : {
