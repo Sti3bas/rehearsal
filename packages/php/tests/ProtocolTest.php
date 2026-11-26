@@ -2,16 +2,51 @@
 
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Orchestra\Testbench\TestCase;
 use Sti3bas\Rehearsal\Attempt;
 use Sti3bas\Rehearsal\CallbackReference;
 use Sti3bas\Rehearsal\Callbacks;
+use Sti3bas\Rehearsal\Database;
 use Sti3bas\Rehearsal\Protocol;
 use Sti3bas\Rehearsal\Run;
 use Sti3bas\Rehearsal\ServiceProvider;
 
 uses(TestCase::class);
+
+it('honors the SQLite transaction mode when attempts share a database across requests', function (?string $mode) {
+    $run = new Run(bin2hex(random_bytes(12)));
+    $run->ensureDirectory();
+    $attempt = new Attempt($run, 1, 'test');
+    $path = $attempt->path('database.sqlite');
+    touch($path);
+    config(['rehearsal.database' => ['driver' => 'sqlite'] + ($mode === null ? [] : ['sqlite_transaction_mode' => $mode])]);
+
+    (new Database)->bind($attempt);
+    $connection = DB::connection();
+    try {
+        $connection->statement('create table events (id integer primary key)');
+        $otherRequest = new PDO('sqlite:'.$path, options: [PDO::ATTR_TIMEOUT => 0]);
+        $connection->beginTransaction();
+        $connection->select('select * from events');
+
+        if ($mode === 'IMMEDIATE') {
+            expect(fn () => $otherRequest->exec('insert into events values (1)'))
+                ->toThrow(PDOException::class, 'database is locked');
+            expect($connection->insert('insert into events values (1)'))->toBeTrue();
+        } else {
+            expect($otherRequest->exec('insert into events values (1)'))->toBe(1);
+            expect(fn () => $connection->insert('insert into events values (2)'))
+                ->toThrow(\Illuminate\Database\QueryException::class, 'database is locked');
+        }
+    } finally {
+        $connection->rollBack();
+        unset($otherRequest);
+        DB::purge();
+        (new Filesystem)->deleteDirectory($run->path());
+    }
+})->with([[null], ['IMMEDIATE']]);
 
 it('binds verified loopback callbacks only to a current attempt', function () {
     $run = new Run(bin2hex(random_bytes(12)));

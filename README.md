@@ -411,7 +411,7 @@ The [full workflow](.github/workflows/ci.yml) exercises all three DB engines at 
 reporter: [["line"], ["@sti3bas/rehearsal/reporter"]]
 ```
 
-It reports mean/max reset times and the number of measured attempts, including retries. Start with a small worker count and measure on your runner. SQLite file copies are a simple starting point; if a suite needs MySQL or PostgreSQL behavior, test against that engine rather than swapping SQL semantics for speed.
+It reports mean/max reset times and the number of measured attempts, including retries. Start with a small worker count and measure on your runner. SQLite file copies are a simple starting point; if a suite needs MySQL or PostgreSQL behavior, test against that engine rather than swapping SQL semantics for speed. When concurrent requests in one SQLite attempt run transactions that read before writing, set `rehearsal.database.sqlite_transaction_mode` to `IMMEDIATE` on PHP 8.4+ to let writers wait at transaction start instead of failing to upgrade a read snapshot. The default is `DEFERRED`; `EXCLUSIVE` is also accepted.
 
 ### Run from source
 
