@@ -79,10 +79,16 @@ final class ServiceProvider extends LaravelProvider
         Route::get('/_rehearsal/ready', [Control::class, 'ready']);
         Route::post('/_rehearsal/start', [Control::class, 'start']);
         Route::post('/_rehearsal/call', [Control::class, 'call']);
-        Route::get('/_rehearsal/route-mock', [RouteMocks::class, 'resolve']);
-        Route::get('/_rehearsal/typesense', [Control::class, 'typesense']);
-        Route::post('/_rehearsal/login', [Control::class, 'login'])
-            ->middleware([EncryptCookies::class, AddQueuedCookiesToResponse::class, StartSession::class]);
+        if (config('rehearsal.route_mocks') === true) {
+            Route::get('/_rehearsal/route-mock', [RouteMocks::class, 'resolve']);
+        }
+        if (config('rehearsal.scout.engine') === 'typesense' && in_array(Scout::class, config('rehearsal.integrations'), true)) {
+            Route::get('/_rehearsal/typesense', [Scout::class, 'credentials']);
+        }
+        if (is_array(config('rehearsal.login'))) {
+            Route::post('/_rehearsal/login', [Control::class, 'login'])
+                ->middleware([EncryptCookies::class, AddQueuedCookiesToResponse::class, StartSession::class]);
+        }
     }
 
     private function active(): bool

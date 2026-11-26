@@ -93,6 +93,8 @@ Pass a URL at the Laravel origin, a path (with `*` for a segment or `**` across 
 
 For traffic that must actually reach Laravel, allowlist paths or glob patterns in `rehearsal.fault_paths`, then use `await laravel.route("/api/listings/**").fault({ status: 503, once: true })`. A delay without a response lets the real route run afterward. A headers-only fault returns an empty HTTP 200 with those headers instead of running the route. Each attempt starts with no rules.
 
+Set `rehearsal.route_mocks` to `false` to disable browser and SSR response mocks and their resolution route. Real-server faults have a separate allowlist. The browser login route is only installed when login is configured, and the Typesense credential route is only installed when the Scout integration is configured for Typesense.
+
 #### Fake outbound Laravel HTTP
 
 ```ts

@@ -37,6 +37,8 @@ it('protects control calls and fences markers when a test slot is reused', funct
         $headers = [Protocol::CAPABILITY => $capability];
         $first = $this->postJson('/_rehearsal/start', ['protocol' => 1, 'slot' => 2], $headers)->assertOk()->json('marker');
         $this->getJson('/probe', [Protocol::MARKER => $first])->assertOk()->assertJson(['slot' => 2]);
+        $this->getJson('/_rehearsal/typesense', [Protocol::MARKER => $first])->assertNotFound();
+        $this->postJson('/_rehearsal/login', ['id' => 1], $headers + [Protocol::MARKER => $first])->assertNotFound();
         $second = $this->postJson('/_rehearsal/start', ['protocol' => 1, 'slot' => 2], $headers)->assertOk()->json('marker');
         expect($second)->not->toBe($first);
         $this->getJson('/probe', [Protocol::MARKER => $first])->assertStatus(409);
@@ -70,9 +72,11 @@ it('honors a custom environment and selective safe-default opt-outs', function (
         'rehearsal.environments' => ['browser-tests'],
         'rehearsal.integrations' => [],
         'rehearsal.safe_defaults' => ['cache.default' => null],
+        'rehearsal.route_mocks' => false,
     ]);
     $this->app->register(ServiceProvider::class);
     expect($this->app->bound(Run::class))->toBeTrue()
+        ->and(collect(app('router')->getRoutes())->contains(fn ($route) => $route->uri() === '_rehearsal/route-mock'))->toBeFalse()
         ->and(config('cache.default'))->toBe('file')
         ->and(config('queue.default'))->toBe('null')
         ->and(config('app.debug'))->toBeFalse();

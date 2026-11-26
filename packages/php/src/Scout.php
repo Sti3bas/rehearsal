@@ -7,6 +7,7 @@ namespace Sti3bas\Rehearsal;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Laravel\Scout\EngineManager;
@@ -15,6 +16,11 @@ use RuntimeException;
 
 final class Scout implements Integration, ClientMetadata
 {
+    public function credentials(Attempt $attempt): JsonResponse
+    {
+        return response()->json($this->clientMetadata($attempt), headers: ['Cache-Control' => 'private, no-store']);
+    }
+
     public function provision(Run $run): void
     {
         $engine = $this->engine();
