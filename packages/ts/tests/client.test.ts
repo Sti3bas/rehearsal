@@ -1,6 +1,7 @@
 import type { APIRequestContext } from "@playwright/test";
 import { describe, expect, it, vi } from "vitest";
 import { Laravel, startAttempt } from "../src/client.js";
+import { routePattern } from "../src/routes.js";
 import { loopback } from "../src/transport.js";
 
 describe("client", () => {
@@ -26,5 +27,12 @@ describe("client", () => {
   it("rejects remote URLs despite similar-looking hostnames", () => {
     expect(loopback(new URL("http://127.0.0.1:8100"))).toBe(true);
     expect(loopback(new URL("http://localhost.evil.example:8100"))).toBe(false);
+  });
+
+  it("uses the root path for the configured Laravel origin", () => {
+    const origin = "http://127.0.0.1:8100";
+    expect(routePattern(origin, origin)).toEqual({ path: "/", method: undefined });
+    expect(routePattern(origin + "/", origin)).toEqual({ path: "/", method: undefined });
+    expect(() => routePattern("http://127.0.0.1:8101", origin)).toThrow("Laravel origin");
   });
 });

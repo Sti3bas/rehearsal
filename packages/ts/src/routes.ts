@@ -23,7 +23,7 @@ export function encodeRouteResponse({ json, ...response }: RouteResponse): Encod
 
 export function routePattern(target: RouteTarget, origin: string) {
   const path = typeof target === "string" ? target : target.url;
-  const absolute = path.startsWith(origin + "/") ? path.slice(origin.length) : path;
+  const absolute = path === origin ? "/" : path.startsWith(origin + "/") ? path.slice(origin.length) : path;
   if (!absolute.startsWith("/") || absolute.startsWith("//")) {
     throw new Error("Rehearsal route mocks require a path or a URL at the Laravel origin.");
   }
