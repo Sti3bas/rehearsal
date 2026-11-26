@@ -350,6 +350,8 @@ REHEARSAL_E2E_NUXT_PORT=8325 REHEARSAL_E2E_WORKERS=4 npm run e2e -- ssr.spec.ts
 docker compose -f examples/laravel/compose.integrations.yml down
 ```
 
+The example Typesense container binds to loopback and allows browser requests only from `http://127.0.0.1:8100` by default. If you use a different frontend origin, set `REHEARSAL_TYPESENSE_CORS_ORIGINS` to the expected origin (or comma-separated origins) when starting Compose. The example's public admin key is for this disposable container only; never reuse it or expose the service outside loopback.
+
 ## Security model
 
 Rehearsal is **test-only**. The bridge activates only in the `playwright` environment with valid managed run settings, and the managed launcher listens on loopback. Keep it off public networks and use disposable databases and service credentials. Never publish the launch record or `.env.playwright`.

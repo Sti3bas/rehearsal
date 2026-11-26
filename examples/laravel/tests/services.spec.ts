@@ -20,6 +20,19 @@ test("sends mail over IPv6 loopback", async ({ laravel }) => {
   await laravel.mailbox("receiver@example.test").expectReceived("IPv6 SMTP");
 });
 
+test("does not allow untrusted Typesense CORS origins", async ({ laravel, request }) => {
+  test.skip(process.env.REHEARSAL_E2E_SCOUT !== "typesense", "Typesense-specific CORS configuration.");
+  const response = await request.fetch(laravel.typesense().origin + "/collections", {
+    method: "OPTIONS",
+    headers: {
+      Origin: "https://untrusted.example",
+      "Access-Control-Request-Method": "GET",
+      "Access-Control-Request-Headers": "X-TYPESENSE-API-KEY",
+    },
+  });
+  expect(response.headers()["access-control-allow-origin"]).toBeUndefined();
+});
+
 for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
   test("isolates Scout and Mailpit for " + name, async ({ laravel, page }, info) => {
     const title = "Probe " + name;
