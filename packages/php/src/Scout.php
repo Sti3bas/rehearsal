@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sti3bas\Rehearsal;
 
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
@@ -101,6 +102,10 @@ final class Scout implements Integration
                 $logicalName = substr($name, strlen($this->prefix($attempt)));
                 $settings = $configured[$name] ?? $configured[$originalPrefix.$logicalName]
                     ?? $configured[$logicalName] ?? $configured[$class] ?? [];
+                if (config('scout.soft_delete', false) && in_array(SoftDeletes::class, class_uses_recursive($model), true)
+                    && ! in_array('__soft_deleted', $settings['filterableAttributes'] ?? [], true)) {
+                    $settings['filterableAttributes'][] = '__soft_deleted';
+                }
                 if ($settings) {
                     $this->wait($this->api()->patch('/indexes/'.$name.'/settings', $settings)->throw());
                 }

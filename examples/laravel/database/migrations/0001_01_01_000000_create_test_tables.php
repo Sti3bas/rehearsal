@@ -16,6 +16,7 @@ return new class extends Migration
             $table->string('password');
             $table->rememberToken();
             $table->timestamps();
+            $table->softDeletes();
         });
         Schema::create('sessions', function (Blueprint $table): void {
             $table->string('id')->primary();

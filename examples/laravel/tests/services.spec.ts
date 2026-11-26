@@ -50,3 +50,11 @@ test("does not index rolled-back factory rows", async ({ laravel }) => {
   await laravel.factory("User", { id: 1024, name: "Probe committed", email: "committed@example.test" });
   await expect.poll(() => laravel.operation("probe.search")).toEqual(["Probe committed"]);
 });
+
+test("filters soft-deleted models in Meilisearch", async ({ laravel }) => {
+  test.skip(process.env.REHEARSAL_E2E_SCOUT !== "meilisearch", "Meilisearch-specific soft-delete filter.");
+  const user = await laravel.factory("User", { name: "Probe soft deleted" });
+  await expect.poll(() => laravel.operation("probe.search")).toEqual(["Probe soft deleted"]);
+  await laravel.operation("probe.delete-user", { id: user.id });
+  await expect.poll(() => laravel.operation("probe.search")).toEqual([]);
+});

@@ -29,13 +29,17 @@ final class ExampleProvider extends ServiceProvider
         });
         if (config('rehearsal.scout.engine')) {
             if (config('rehearsal.scout.engine') === 'meilisearch') {
-                config(['scout.meilisearch.index-settings.users' => ['filterableAttributes' => ['name']]]);
+                config([
+                    'scout.meilisearch.index-settings.users' => ['filterableAttributes' => ['name']],
+                    'scout.soft_delete' => true,
+                ]);
             }
             $ops = $this->app->make(Operations::class);
             $ops->register('probe.mail', ['title' => 'required|string|max:100'], function (array $data): void {
                 Mail::raw('Message content', fn ($mail) => $mail->to('receiver@example.test')->subject($data['title']));
             });
             $ops->register('probe.inbox', [], fn () => array_column(app(Mailpit::class)->messages(app(Attempt::class)), 'Subject'));
+            $ops->register('probe.delete-user', ['id' => 'required|integer'], fn (array $data) => User::findOrFail($data['id'])->delete());
             $ops->register('probe.search', ['name' => 'sometimes|string|max:100'], function (array $data): array {
                 $search = User::search('Probe');
                 if (isset($data['name'])) {
