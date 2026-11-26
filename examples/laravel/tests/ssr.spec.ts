@@ -104,6 +104,49 @@ test("returns a headers-only fault once on the real server", async ({ laravel, p
   expect(second.headers()["x-probe-fault"]).toBeUndefined();
 });
 
+test("shares finite mock claims and paused requests between browser and SSR", async ({ laravel, page }) => {
+  const frontend = "http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT;
+  const browserUsers = () => page.evaluate(async () => (await (await fetch("/state")).json()).users);
+  await page.goto("/");
+  await laravel.route("/state").respond({ json: { users: ["twice"] }, times: 2 });
+  expect(await browserUsers()).toEqual(["twice"]);
+  expect(await (await page.request.get(frontend)).text()).toContain("<li>twice</li>");
+  expect(await browserUsers()).toEqual(["Baseline"]);
+
+  const gate = await laravel.route("/state").pause({ json: { users: ["released"] } });
+  let settled = false;
+  const pending = page.request.get(frontend).finally(() => { settled = true; });
+  try {
+    await gate.waitForRequest();
+    await laravel.clearRouteMocks();
+    expect(await browserUsers()).toEqual(["Baseline"]);
+    expect(settled).toBe(false);
+  } finally {
+    await gate.release();
+  }
+  expect(await (await pending).text()).toContain("<li>released</li>");
+
+  const passthrough = await laravel.route("/state").pause();
+  const browser = browserUsers();
+  try {
+    await passthrough.waitForRequest();
+  } finally {
+    await passthrough.release();
+  }
+  expect(await browser).toEqual(["Baseline"]);
+});
+
+test("clears finite real-server faults mid-attempt", async ({ laravel, page, baseURL }) => {
+  const redirect = () => page.request.get(baseURL + "/probe/redirect", { maxRedirects: 0 });
+  await laravel.route("/probe/redirect").fault({ status: 503, times: 2 });
+  expect((await redirect()).status()).toBe(503);
+  expect((await redirect()).status()).toBe(503);
+  expect((await redirect()).status()).toBe(302);
+  await laravel.route("/probe/redirect").fault({ status: 503 });
+  await laravel.clearRouteFaults();
+  expect((await redirect()).status()).toBe(302);
+});
+
 test.describe("route mocks on a reused slot", () => {
   test.describe.configure({ mode: "serial" });
   test("stubs a Laravel route", async ({ laravel, page }) => {

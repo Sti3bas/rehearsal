@@ -19,7 +19,7 @@ final class RouteMocks
         $data = Validator::validate($input, [
             'path' => ['required', 'string', 'max:1024', 'starts_with:/', 'not_regex:/^\/\//'],
             'method' => ['nullable', 'string', Rule::in(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])],
-            'response' => ($fault ? 'required' : 'present').'|array:status,jsonBody,body,headers,delay,abort,networkError,once',
+            'response' => ($fault ? 'required' : 'present').'|array:status,jsonBody,body,headers,delay,abort,networkError,once,times,gate,passthrough',
             'response.status' => 'sometimes|integer|min:200|max:599',
             'response.jsonBody' => 'sometimes|string|json|max:100000',
             'response.body' => 'sometimes|string|max:100000',
@@ -29,21 +29,61 @@ final class RouteMocks
             'response.abort' => 'sometimes|boolean',
             'response.networkError' => 'sometimes|boolean',
             'response.once' => 'sometimes|boolean',
+            'response.times' => 'sometimes|integer|min:1',
+            'response.gate' => 'sometimes|string|regex:/\A[a-f0-9]{32}\z/',
+            'response.passthrough' => 'sometimes|boolean',
         ]);
-        abort_if(isset($data['response']['body'], $data['response']['jsonBody']), 422);
-        foreach ($data['response']['headers'] ?? [] as $name => $value) {
+        $response = $data['response'];
+        abort_if(isset($response['body'], $response['jsonBody'])
+            || (! empty($response['once']) && isset($response['times']))
+            || (! empty($response['passthrough']) && array_intersect_key($response, array_flip(['status', 'body', 'jsonBody', 'headers', 'abort', 'networkError']))), 422);
+        foreach ($response['headers'] ?? [] as $name => $value) {
             abort_unless(preg_match('/\A[a-zA-Z0-9!#$%&\'*+.^_`|~-]+\z/', $name)
                 && ! preg_match('/[\r\n]/', $value), 422);
         }
         if ($fault) {
             abort_unless(in_array($data['path'], config('rehearsal.fault_paths', []), true), 422);
-            abort_if(! empty($data['response']['abort']) || ! empty($data['response']['networkError']), 422);
+            abort_if(! empty($response['abort']) || ! empty($response['networkError'])
+                || isset($response['gate']) || ! empty($response['passthrough']), 422);
         }
 
-        AttemptData::update($attempt, $fault ? 'route-faults' : 'route-mocks', function (array &$rules) use ($data): void {
+        AttemptData::update($attempt, $fault ? 'route-faults' : 'route-mocks', function (array &$rules) use ($attempt, $data, $response): void {
             abort_if(count($rules) >= 64, 422);
+            if (isset($response['gate'])) {
+                AttemptData::update($attempt, 'route-gates', function (array &$gates) use ($response): void {
+                    abort_if(count($gates) >= 64 || isset($gates[$response['gate']]), 422);
+                    $gates[$response['gate']] = ['claimed' => false, 'released' => false];
+                });
+            }
             $rules[] = $data;
         });
+    }
+
+    public static function clear(Attempt $attempt, bool $fault): void
+    {
+        abort_if(! $fault && config('rehearsal.route_mocks') !== true, 404);
+        AttemptData::update($attempt, $fault ? 'route-faults' : 'route-mocks', static function (array &$rules): void {
+            $rules = [];
+        });
+    }
+
+    public static function release(Attempt $attempt, array $input): void
+    {
+        abort_unless(config('rehearsal.route_mocks') === true, 404);
+        $data = Validator::validate($input, ['gate' => ['required', 'string', 'regex:/\A[a-f0-9]{32}\z/']]);
+        AttemptData::update($attempt, 'route-gates', static function (array &$gates) use ($data): void {
+            abort_unless(isset($gates[$data['gate']]), 404);
+            $gates[$data['gate']]['released'] = true;
+        });
+    }
+
+    public function gate(Request $request, Attempt $attempt, string $gate): JsonResponse
+    {
+        abort_unless($request->hasHeader(Protocol::MARKER), 403);
+        $state = AttemptData::update($attempt, 'route-gates', static fn (array $gates) => $gates[$gate] ?? null);
+        abort_if($state === null, 404);
+
+        return response()->json(['data' => $state])->header('Cache-Control', 'no-store');
     }
 
     public function resolve(Request $request, Attempt $attempt): JsonResponse
@@ -83,18 +123,26 @@ final class RouteMocks
             return null;
         }
 
-        return AttemptData::update($attempt, $fault ? 'route-faults' : 'route-mocks', function (array &$rules) use ($method, $path, $target) {
+        return AttemptData::update($attempt, $fault ? 'route-faults' : 'route-mocks', function (array &$rules) use ($attempt, $method, $path, $target) {
             for ($i = count($rules) - 1; $i >= 0; $i--) {
                 $rule = $rules[$i];
                 $pattern = $rule['path'];
                 $candidate = str_contains($pattern, '?') ? $target : $path;
                 $regex = strtr(preg_quote($pattern, '~'), ['\*\*' => '.*', '\*' => '[^/]*']);
                 if (($rule['method'] ?? $method) === $method && preg_match('~\A'.$regex.'\z~D', $candidate)) {
-                    if ($rule['response']['once'] ?? false) {
+                    $response = $rule['response'];
+                    if (($response['once'] ?? false) || ($response['times'] ?? null) == 1) {
                         array_splice($rules, $i, 1);
+                    } elseif (isset($response['times'])) {
+                        $rules[$i]['response']['times']--;
+                    }
+                    if (isset($response['gate'])) {
+                        AttemptData::update($attempt, 'route-gates', static function (array &$gates) use ($response): void {
+                            $gates[$response['gate']]['claimed'] = true;
+                        });
                     }
 
-                    return $rule['response'];
+                    return $response;
                 }
             }
 

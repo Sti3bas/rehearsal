@@ -1,6 +1,6 @@
 import { createFetch } from "ofetch";
 import { HttpResponse } from "msw";
-import { claimRoute, mockResponse } from "./routes.js";
+import { claimRoute, mockResponse, wait, waitForRouteGate } from "./routes.js";
 import { attemptMarker, rehearsalSsrFetch } from "./ssr.js";
 import { capabilityHeader, loopback, markerCookie } from "./transport.js";
 
@@ -39,14 +39,17 @@ export function createNuxtRehearsalFetch(laravelOrigin: string, requestHeaders: 
       if (!mocks || !marker || target.origin !== origin || target.username || target.password
           || control) return forward();
       const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
-      const rule = await claimRoute(origin, marker, method, target);
-      if (!rule) return forward();
-
       const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
       signal?.throwIfAborted();
-      const { body, ...response } = await mockResponse(rule);
+      const rule = await claimRoute(origin, marker, method, target, fetch, signal);
+      if (!rule) return forward();
+
+      if (rule.gate) await waitForRouteGate(origin, marker, rule.gate, "released", signal);
+      if (rule.delay) await wait(rule.delay, signal);
       signal?.throwIfAborted();
+      if (rule.passthrough) return forward();
       if (rule.abort || rule.networkError) throw new TypeError("fetch failed");
+      const { body, ...response } = mockResponse(rule);
       return new HttpResponse(body, response);
     },
   });

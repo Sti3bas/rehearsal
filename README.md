@@ -87,11 +87,21 @@ php artisan vendor:publish --tag=rehearsal-config
 ```ts
 await laravel.route("/api/listings/**").respond({ json: { data: [] }, delay: 100 });
 await laravel.route(listings.show({ listing: slug })).respond({ status: 404, once: true });
+await laravel.route("/api/feed").respond({ status: 503, times: 2 });
+
+const gate = await laravel.route("/api/feed").pause({ json: { data: [] } });
+const navigation = page.goto("/feed");
+await gate.waitForRequest();
+await gate.release();
+await navigation;
+await laravel.clearRouteMocks();
 ```
 
-Pass a URL at the Laravel origin, a path (with `*` for a segment or `**` across segments), or a Wayfinder object or route function and its parameters. Wayfinder objects also match the HTTP method. Supports JSON, text bodies, headers, status, delays (milliseconds), browser aborts and network errors. If a pattern includes a query string it is matched; otherwise queries are ignored. Newest matching registration wins; `once` is shared between browser and SSR, including across browser contexts bound to the attempt. The Nuxt module uses MSW for fetches using `useRehearsalFetch()` in forwarding mode. Browser routes apply only to Playwright contexts bound to the attempt and HTTP requests to Laravel, not third-party assets.
+Pass a URL at the Laravel origin, a path (with `*` for a segment or `**` across segments), or a Wayfinder object or route function and its parameters. Wayfinder objects also match the HTTP method. Supports JSON, text bodies, headers, status, delays (milliseconds), aborts and network errors. If a pattern includes a query string it is matched; otherwise queries are ignored. Newest matching registration wins; `once` or `times` counts claims across the browser and SSR, including across browser contexts bound to the same attempt. Once exhausted, the next matching rule or the real route takes over. The Nuxt module uses MSW for fetches using `useRehearsalFetch()` in forwarding mode. Browser routes apply only to Playwright contexts bound to the attempt and HTTP requests to Laravel, not third-party assets.
 
-For traffic that must actually reach Laravel, allowlist paths or glob patterns in `rehearsal.fault_paths`, then use `await laravel.route("/api/listings/**").fault({ status: 503, once: true })`. A delay without a response lets the real route run afterward. A headers-only fault returns an empty HTTP 200 with those headers instead of running the route. Each attempt starts with no rules.
+`pause()` lets matched requests continue to Laravel after `release()`; with a response it returns that response instead. `waitForRequest({ timeout: 5000 })` waits until the first match (five seconds by default). Clearing a mock removes future matches, but does not release requests already waiting on its gate.
+
+For traffic that must actually reach Laravel, allowlist paths in `rehearsal.fault_paths`, then use `await laravel.route("/api/listings").fault({ status: 503, once: true })`. A delay without a response lets the real route run afterward. A headers-only fault returns an empty HTTP 200 with those headers instead of running the route. Faults support `once` and `times`; use `clearRouteFaults()` to remove them independently of mocks. Each attempt starts with no rules.
 
 Set `rehearsal.route_mocks` to `false` to disable browser and SSR response mocks and their resolution route. Real-server faults have a separate allowlist. The browser login route is only installed when login is configured, and the Typesense credential route is only installed when the Scout integration is configured for Typesense.
 

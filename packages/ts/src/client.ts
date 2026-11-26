@@ -1,9 +1,10 @@
+import { randomUUID } from "node:crypto";
 import type { APIRequestContext, BrowserContext, Page } from "@playwright/test";
 import { encodeHttpRules, type HttpFakeRules } from "./http.js";
 import { Mailbox } from "./mail.js";
 import { Queue, type DrainOptions, type DrainResult } from "./queue.js";
 import { capabilityHeader, loopback, markerCookie, markerHeader, protocol } from "./transport.js";
-import { claimRoute, encodeRouteResponse, matchesRoute, mockResponse, routePattern, type RouteResponse, type RouteTarget } from "./routes.js";
+import { claimRoute, encodeRouteResponse, matchesRoute, mockResponse, routePattern, wait, waitForRouteGate, type RouteResponse, type RouteTarget } from "./routes.js";
 
 export interface FactoryDefinition {
   model: string;
@@ -94,14 +95,33 @@ export class Laravel {
     return this.routeActions(routePattern(typeof target === "function" ? target(params) : target, this.origin));
   }
 
+  async clearRouteMocks() {
+    await this.operation("route.mock.clear", {});
+    this.patterns = [];
+  }
+
+  clearRouteFaults() {
+    return this.operation("route.fault.clear", {});
+  }
+
   private routeActions(pattern: ReturnType<typeof routePattern>) {
+    const respond = async (response: RouteResponse, gate?: string) => {
+      await this.operation("route.mock", { ...pattern, response: { ...encodeRouteResponse(response), gate } });
+      this.patterns.push(pattern);
+      await Promise.all([...this.contexts].map((context) => this.installRouteMocks(context)));
+    };
     return {
-      respond: async (response: RouteResponse) => {
-        await this.operation("route.mock", { ...pattern, response: encodeRouteResponse(response) });
-        this.patterns.push(pattern);
-        await Promise.all([...this.contexts].map((context) => this.installRouteMocks(context)));
+      respond: (response: RouteResponse) => respond(response),
+      pause: async (response: RouteResponse = { passthrough: true }) => {
+        const gate = randomUUID().replaceAll("-", "");
+        await respond(response, gate);
+        return {
+          waitForRequest: ({ timeout = 5_000 }: { timeout?: number } = {}) =>
+            waitForRouteGate(this.origin, this.marker, gate, "claimed", AbortSignal.timeout(timeout)),
+          release: () => this.operation("route.mock.release", { gate }),
+        };
       },
-      fault: (response: Omit<RouteResponse, "abort" | "networkError">) =>
+      fault: (response: Omit<RouteResponse, "abort" | "networkError" | "passthrough">) =>
         this.operation("route.fault", { ...pattern, response: encodeRouteResponse(response) }),
     };
   }
@@ -109,15 +129,24 @@ export class Laravel {
   private async installRouteMocks(context: BrowserContext) {
     if (this.routeContexts.has(context)) return;
     this.routeContexts.add(context);
+    const controller = new AbortController();
+    context.once("close", () => controller.abort());
     await context.route((url) => url.origin === this.origin && !/^\/_rehearsal(?:\/|$)/.test(url.pathname), async (route) => {
       const request = route.request();
       const url = new URL(request.url());
       if (!this.patterns.some((pattern) => matchesRoute(pattern, url, request.method()))) return route.fallback();
-      const rule = await claimRoute(this.origin, this.marker, request.method(), url);
-      if (!rule) return route.fallback();
-      const response = await mockResponse(rule);
-      if (rule.abort || rule.networkError) return route.abort(rule.abort ? "aborted" : "failed");
-      return route.fulfill({ ...response, headers: Object.fromEntries(response.headers) });
+      try {
+        const rule = await claimRoute(this.origin, this.marker, request.method(), url, fetch, controller.signal);
+        if (!rule) return route.fallback();
+        if (rule.gate) await waitForRouteGate(this.origin, this.marker, rule.gate, "released", controller.signal);
+        if (rule.delay) await wait(rule.delay, controller.signal);
+        if (rule.passthrough) return route.fallback();
+        if (rule.abort || rule.networkError) return route.abort(rule.abort ? "aborted" : "failed");
+        const response = mockResponse(rule);
+        return route.fulfill({ ...response, headers: Object.fromEntries(response.headers) });
+      } catch (error) {
+        if (!controller.signal.aborted) throw error;
+      }
     });
   }
 
