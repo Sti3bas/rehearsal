@@ -31,7 +31,7 @@ final class ServiceProvider extends LaravelProvider
         $path = __DIR__.'/../config/rehearsal.php';
         $this->mergeConfigFrom($path, 'rehearsal');
 
-        $this->app->singleton(Operations::class);
+        $this->app->singleton(Operations::class, fn () => new Operations(config('rehearsal.operations')));
         if (! $this->active()) {
             return;
         }
@@ -81,6 +81,7 @@ final class ServiceProvider extends LaravelProvider
         Route::post('/_rehearsal/call', [Control::class, 'call']);
         if (config('rehearsal.route_mocks') === true) {
             Route::get('/_rehearsal/route-mock', [RouteMocks::class, 'resolve']);
+            Route::get('/_rehearsal/route-mock/gates/{gate}', [RouteMocks::class, 'gate'])->where('gate', '[a-f0-9]{32}');
         }
         if (config('rehearsal.scout.engine') === 'typesense' && in_array(Scout::class, config('rehearsal.integrations'), true)) {
             Route::get('/_rehearsal/typesense', [Scout::class, 'credentials']);

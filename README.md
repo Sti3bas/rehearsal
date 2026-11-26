@@ -21,7 +21,7 @@ Rehearsal joins a real Laravel app to native Playwright Test. A worker can creat
 
 **Requirements:** Laravel 13, PHP 8.3+ with the matching PDO extension, Node 22.18+ in the 22 line or Node 24 LTS, and Playwright Test 1.65.1 or compatible. The managed server uses PHP CLI workers (Linux/macOS). Use a classic Laravel request lifecycle, not Octane or another persistent application runtime.
 
-**Release status:** The packages are not published yet. The commands below are the installation path once they are available. To try the current branch, use [the runnable starter](#run-from-source).
+**Release status:** The packages are not published yet. Use [a Git revision](#install-from-git) or [the runnable starter](#run-from-source) until the commands below are available.
 
 ```sh
 composer require --dev sti3bas/rehearsal
@@ -31,6 +31,18 @@ npx playwright install chromium
 ```
 
 The installer writes `.env.playwright` without overwriting an existing file. Ignore `.env.playwright` and `.rehearsal/`. SQLite is the default. Keep Laravel's migrations for the database-backed sessions, cache, and queues you use (including the failed-jobs table for queue drains).
+
+### Install from Git
+
+Add the Rehearsal repository to the Laravel application's Composer repositories, then pin both development dependencies to the same full Git SHA. Replace `<branch>` with the branch containing the revision (for example, `main`) and `<commit>` with the full SHA.
+
+```sh
+composer config repositories.rehearsal vcs https://github.com/Sti3bas/rehearsal.git
+composer require --dev 'sti3bas/rehearsal:dev-<branch>#<commit>'
+npm install -D 'git+https://github.com/Sti3bas/rehearsal.git#<commit>' @playwright/test
+```
+
+Composer resolves the development branch's metadata but locks the exact commit. npm builds the TypeScript package during Git installation. If GitHub access requires credentials, configure Composer's GitHub OAuth and Git authentication outside the dependency manifests and lockfiles. Then run the Artisan and Playwright install commands above.
 
 The PHP package allows only the `testing` environment by default. Set `rehearsal.environments` in your application's config or use the comma-separated `REHEARSAL_ENVIRONMENTS` variable. New installer-generated files opt in automatically; for an existing `.env.playwright`, add `REHEARSAL_ENVIRONMENTS=playwright` or configure the allowlist in your app. To use a different environment, run `php artisan rehearsal:install --environment=browser-tests` and set `laravelServer({ environment: "browser-tests" })`. The example app opts into `playwright` explicitly.
 
@@ -77,23 +89,74 @@ php artisan vendor:publish --tag=rehearsal-config
 | Call | What it does |
 | --- | --- |
 | `laravel.factory("User", attrs, { states, count })` | Creates a model or a batch. The model and state aliases must be registered in config. Pass an array of definitions to batch several factories into one call. |
-| `laravel.login({ id })` | Logs in the current browser context through the configured guard. Opt in with `'login' => ['guard' => 'web']`. |
+| `laravel.login({ id }, context?)` | Logs in the current browser context through the configured guard. Pass another browser context to bind it to the same attempt and log it in separately. Opt in with `'login' => ['guard' => 'web']`. |
 | `laravel.travel("2034-01-02T12:00:00.000Z")` | Sets Laravel's test clock and the fixed time on pages managed by the fixture. |
 | `laravel.artisan("about", {})` | Runs a configured alias, never an arbitrary Artisan command. |
 | `laravel.operation("reports.stage", input)` | Calls a named, validated application operation. |
 
+#### Extend the fixtures with app operations
+
+Register operations on the Laravel side using `Operations::register($name, $rules, $handler)`. Unregistered names are rejected; the TypeScript declarations do not replace server-side input validation.
+
+```ts
+import { defineOperation, defineRehearsal } from "@sti3bas/rehearsal";
+
+const rehearsal = defineRehearsal({
+  operations: {
+    stageReport: defineOperation<{ slug: string }, { id: number }>("reports.stage"),
+  },
+});
+
+export const test = rehearsal.extend<{ reportId: number }>({
+  reportId: async ({ operations }, use) => {
+    const { id } = await operations.stageReport({ slug: "weekly" });
+    await use(id);
+  },
+});
+```
+
+This is a Playwright test instance: compose it with ordinary fixtures for app-specific setup and fakes. To isolate a service on the Laravel side, register an app class implementing `Integration` under `rehearsal.integrations`. Its implementation and seed data stay in the consuming app.
+
 #### Mock Laravel routes
+
 
 ```ts
 await laravel.route("/api/listings/**").respond({ json: { data: [] }, delay: 100 });
 await laravel.route(listings.show({ listing: slug })).respond({ status: 404, once: true });
+await laravel.route("/api/feed").respond({ status: 503, times: 2 });
+
+const gate = await laravel.route("/api/feed").pause({ json: { data: [] } });
+const navigation = page.goto("/feed");
+await gate.waitForRequest();
+await gate.release();
+await navigation;
+await laravel.clearRouteMocks();
 ```
 
-Pass a URL at the Laravel origin, a path (with `*` for a segment or `**` across segments), or a Wayfinder object or route function and its parameters. Wayfinder objects also match the HTTP method. Supports JSON, text bodies, headers, status, delays (milliseconds), browser aborts and network errors. If a pattern includes a query string it is matched; otherwise queries are ignored. Newest matching registration wins; `once` is shared between browser and SSR, including across browser contexts bound to the attempt. The Nuxt module uses MSW for fetches using `useRehearsalFetch()` in forwarding mode. Browser routes apply only to Playwright contexts bound to the attempt and HTTP requests to Laravel, not third-party assets.
+Pass a URL at the Laravel origin, a path (with `*` for a segment or `**` across segments), or a Wayfinder object or route function and its parameters. Wayfinder objects also match the HTTP method. Supports JSON, text bodies, headers, status, delays (milliseconds), aborts and network errors. If a pattern includes a query string it is matched; otherwise queries are ignored. Newest matching registration wins; `once` or `times` counts claims across the browser and SSR, including across browser contexts bound to the same attempt. Once exhausted, the next matching rule or the real route takes over. The Nuxt module uses MSW for fetches using `useRehearsalFetch()` in forwarding mode. Browser routes apply only to Playwright contexts bound to the attempt and HTTP requests to Laravel, not third-party assets.
 
-For traffic that must actually reach Laravel, allowlist paths or glob patterns in `rehearsal.fault_paths`, then use `await laravel.route("/api/listings/**").fault({ status: 503, once: true })`. A delay without a response lets the real route run afterward. A headers-only fault returns an empty HTTP 200 with those headers instead of running the route. Each attempt starts with no rules.
+`pause()` lets matched requests continue to Laravel after `release()`; with a response it returns that response instead. `waitForRequest({ timeout: 5000 })` waits until the first match (five seconds by default). Clearing a mock removes future matches, but does not release requests already waiting on its gate.
+
+For traffic that must actually reach Laravel, allowlist paths in `rehearsal.fault_paths`, then use `await laravel.route("/api/listings").fault({ status: 503, once: true })`. A delay without a response lets the real route run afterward. A headers-only fault returns an empty HTTP 200 with those headers instead of running the route. Faults support `once` and `times`; use `clearRouteFaults()` to remove them independently of mocks. Each attempt starts with no rules.
 
 Set `rehearsal.route_mocks` to `false` to disable browser and SSR response mocks and their resolution route. Real-server faults have a separate allowlist. The browser login route is only installed when login is configured, and the Typesense credential route is only installed when the Scout integration is configured for Typesense.
+
+#### Route verified callbacks
+
+External providers cannot send the browser's attempt marker. For a provider that
+forwards webhooks to the local test server, opt in with
+`'callbacks' => ['/provider/callback' => ProviderCallbackReference::class]`.
+Implement `CallbackReference::verifiedReference(Request $request): ?string` in
+the app. Verify the provider signature against the raw body before returning a
+stable external reference, such as a provider customer ID. Do not derive the
+attempt from an unsigned request field or a worker number.
+
+When a marked app request creates that external resource, associate it with
+`app(Callbacks::class)->bind('/provider/callback', $reference)`. Rehearsal saves a
+signed binding scoped to the exact path, the run, and the current attempt.
+Only loopback POSTs on the configured path are eligible. Valid callbacks without
+a registered reference return 204, and a binding to a replaced attempt is
+rejected. The app still owns its webhook route and provider-specific behavior.
 
 #### Fake outbound Laravel HTTP
 
@@ -272,6 +335,8 @@ if ($this->app->environment('playwright')) {
 await laravel.operation("reports.stage", { title: "April summary" });
 ```
 
+Alternatively, add `'reports.stage' => ['rules' => ['title' => 'required|string|max:100'], 'handler' => StageReport::class]` to `rehearsal.operations`. The package resolves the invokable class only when the operation is called and passes it the validated array. Both registration methods share the same operation names, so a name cannot be registered twice.
+
 For purpose-built Artisan wrappers, add aliases under `rehearsal.artisan` with a `command`, optional `fixed` arguments, and validation `rules` for arguments the caller may supply.
 
 ## SSR and split frontends
@@ -346,7 +411,7 @@ The [full workflow](.github/workflows/ci.yml) exercises all three DB engines at 
 reporter: [["line"], ["@sti3bas/rehearsal/reporter"]]
 ```
 
-It reports mean/max reset times and the number of measured attempts, including retries. Start with a small worker count and measure on your runner. SQLite file copies are a simple starting point; if a suite needs MySQL or PostgreSQL behavior, test against that engine rather than swapping SQL semantics for speed.
+It reports mean/max reset times and the number of measured attempts, including retries. Start with a small worker count and measure on your runner. SQLite file copies are a simple starting point; if a suite needs MySQL or PostgreSQL behavior, test against that engine rather than swapping SQL semantics for speed. When concurrent requests in one SQLite attempt run transactions that read before writing, set `rehearsal.database.sqlite_transaction_mode` to `IMMEDIATE` on PHP 8.4+ to let writers wait at transaction start instead of failing to upgrade a read snapshot. The default is `DEFERRED`; `EXCLUSIVE` is also accepted.
 
 ### Run from source
 

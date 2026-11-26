@@ -135,18 +135,29 @@ final class Database implements Integration
             DB::purge($alias);
         }
         DB::purge(self::CONNECTION);
-        $connection = $this->driver() === 'sqlite' ? [
-            'driver' => 'sqlite',
-            'foreign_key_constraints' => true,
-            'busy_timeout' => 5000,
-            'journal_mode' => 'WAL',
-        ] : $this->serverConfig();
+        $connection = $this->driver() === 'sqlite' ? $this->sqliteConfig() : $this->serverConfig();
         DB::extend('rehearsal-alias', static fn () => DB::connection(self::CONNECTION));
         config([
             'database.connections' => [self::CONNECTION => array_replace($connection, ['database' => $database])]
                 + array_fill_keys($aliases, ['driver' => 'rehearsal-alias']),
             'database.default' => self::CONNECTION,
         ]);
+    }
+
+    private function sqliteConfig(): array
+    {
+        $mode = config('rehearsal.database.sqlite_transaction_mode', 'DEFERRED');
+        if (! in_array($mode, ['DEFERRED', 'IMMEDIATE', 'EXCLUSIVE'], true)) {
+            throw new RuntimeException('Invalid Rehearsal SQLite transaction mode.');
+        }
+
+        return [
+            'driver' => 'sqlite',
+            'foreign_key_constraints' => true,
+            'busy_timeout' => 5000,
+            'journal_mode' => 'WAL',
+            'transaction_mode' => $mode,
+        ];
     }
 
     private function serverConfig(): array

@@ -30,7 +30,14 @@ final readonly class BindAttempt
             return $next($request);
         }
 
-        $attempt = $this->protocol->resolve($request->header(Protocol::MARKER, $request->cookies->get(Protocol::MARKER_COOKIE, '')));
+        if ($request->isMethod('POST') && Callbacks::configured($request->getPathInfo())) {
+            $attempt = $this->app->make(Callbacks::class)->resolve($request);
+            if ($attempt === null) {
+                return new Response(status: 204);
+            }
+        } else {
+            $attempt = $this->protocol->resolve($request->header(Protocol::MARKER, $request->cookies->get(Protocol::MARKER_COOKIE, '')));
+        }
 
         $lease = $attempt->run->acquire('slot-'.$attempt->slot, LOCK_SH);
         try {

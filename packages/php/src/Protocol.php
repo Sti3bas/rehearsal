@@ -57,10 +57,15 @@ final readonly class Protocol
             }
 
             $this->write('slot-'.$attempt->slot.'.attempt', $attempt->id);
-            $payload = implode('.', [$this->run->id, $attempt->slot, $attempt->id, time() + 7200]);
-
-            return ['marker' => $payload.'.'.$this->sign($payload), 'resetMs' => $timings, 'client' => $client];
+            return ['marker' => $this->marker($attempt), 'resetMs' => $timings, 'client' => $client];
         });
+    }
+
+    public function marker(Attempt $attempt): string
+    {
+        $payload = implode('.', [$attempt->run->id, $attempt->slot, $attempt->id, time() + 7200]);
+
+        return $payload.'.'.$this->sign($payload);
     }
 
     public function resolve(string $marker): Attempt

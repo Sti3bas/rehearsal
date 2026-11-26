@@ -9,10 +9,12 @@ export interface RouteResponse {
   abort?: boolean;
   networkError?: boolean;
   once?: boolean;
+  times?: number;
+  passthrough?: boolean;
 }
 
 export type RouteTarget = string | { url: string; method: string };
-type EncodedRouteResponse = Omit<RouteResponse, "json"> & { jsonBody?: string };
+type EncodedRouteResponse = Omit<RouteResponse, "json"> & { jsonBody?: string; gate?: string };
 
 export function encodeRouteResponse({ json, ...response }: RouteResponse): EncodedRouteResponse {
   if (json === undefined) return response;
@@ -38,16 +40,41 @@ export function matchesRoute(rule: ReturnType<typeof routePattern>, url: URL, me
     new RegExp("^" + regex + "$").test(url.pathname + (rule.path.includes("?") ? url.search : ""));
 }
 
-export async function claimRoute(origin: string, marker: string, method: string, url: URL, fetcher = fetch): Promise<EncodedRouteResponse | null> {
+export async function claimRoute(origin: string, marker: string, method: string, url: URL, fetcher = fetch, signal?: AbortSignal): Promise<EncodedRouteResponse | null> {
   const probe = new URL("/_rehearsal/route-mock", origin);
   probe.search = new URLSearchParams({ method, path: url.pathname + url.search }).toString();
-  const response = await fetcher(probe, { headers: { [markerHeader]: marker }, redirect: "manual" });
+  const response = await fetcher(probe, { headers: { [markerHeader]: marker }, redirect: "manual", ...(signal ? { signal } : {}) });
   if (!response.ok) throw new Error("Rehearsal route lookup failed (HTTP " + response.status + ").");
   return (await response.json()).data as EncodedRouteResponse | null;
 }
 
-export async function mockResponse(rule: EncodedRouteResponse) {
-  if (rule.delay) await new Promise((resolve) => setTimeout(resolve, rule.delay));
+export async function waitForRouteGate(origin: string, marker: string, gate: string, state: "claimed" | "released", signal?: AbortSignal) {
+  const url = new URL("/_rehearsal/route-mock/gates/" + gate, origin);
+  while (true) {
+    signal?.throwIfAborted();
+    const response = await fetch(url, { headers: { [markerHeader]: marker }, redirect: "manual", signal });
+    if (!response.ok) throw new Error("Rehearsal route gate lookup failed (HTTP " + response.status + ").");
+    if ((await response.json()).data[state] === true) return;
+    await wait(50, signal);
+  }
+}
+
+export function wait(delay: number, signal?: AbortSignal) {
+  signal?.throwIfAborted();
+  return new Promise<void>((resolve, reject) => {
+    const abort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }, delay);
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
+export function mockResponse(rule: EncodedRouteResponse) {
   const headers = new Headers(rule.headers);
   if (rule.jsonBody !== undefined && !headers.has("content-type")) headers.set("content-type", "application/json");
   const body = [204, 205, 304].includes(rule.status ?? 200) ? undefined : rule.jsonBody ?? rule.body;

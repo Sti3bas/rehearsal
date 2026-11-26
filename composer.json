@@ -1,0 +1,12 @@
+{
+  "name": "sti3bas/rehearsal",
+  "description": "Parallel Playwright testing for Laravel",
+  "type": "library",
+  "license": "MIT",
+  "require": {
+    "php": "^8.3",
+    "laravel/framework": "^13.0"
+  },
+  "autoload": {"psr-4": {"Sti3bas\\Rehearsal\\": "packages/php/src/"}},
+  "extra": {"laravel": {"providers": ["Sti3bas\\Rehearsal\\ServiceProvider"]}}
+}

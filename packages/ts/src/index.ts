@@ -1,5 +1,6 @@
 import { test as base, type APIRequestContext } from "@playwright/test";
 import { Laravel, startAttempt } from "./client.js";
+import { bindOperations, type BoundOperations, type OperationDefinitions } from "./extensions.js";
 import { injectReverb, Reverb } from "./reverb.js";
 import { loopback, managedLaunch, protocol } from "./transport.js";
 
@@ -81,3 +82,12 @@ export type { DrainOptions, DrainResult, FailedJob } from "./queue.js";
 export type { HttpFakeResponse, HttpFakeRule, HttpFakeRules } from "./http.js";
 export { laravelServer } from "./server.js";
 export { injectReverb, type ReverbClientConfig } from "./reverb.js";
+export function defineRehearsal<T extends OperationDefinitions>({ operations }: { operations: T }) {
+  return test.extend<{ operations: BoundOperations<T> }>({
+    operations: async ({ laravel }, use) => {
+      await use(bindOperations(operations, laravel));
+    },
+  });
+}
+
+export { defineOperation, type BoundOperations, type Operation } from "./extensions.js";
