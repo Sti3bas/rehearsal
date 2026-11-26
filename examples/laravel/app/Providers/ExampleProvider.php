@@ -5,7 +5,6 @@ namespace App\Providers;
 use App\Jobs\WriteProbe;
 use App\Models\User;
 use Illuminate\Support\Facades\Bus;
-use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\ServiceProvider;
@@ -59,10 +58,6 @@ final class ExampleProvider extends ServiceProvider
                     default => $search->get()->pluck('name')->all(),
                 };
             });
-        }
-        if (config('rehearsal.integrations.reverb')) {
-            $this->app->make(Operations::class)->register('probe.broadcast', ['value' => 'required|string|max:100'],
-                fn (array $data) => Broadcast::connection()->broadcast(['probe'], 'ping', $data));
         }
     }
 }

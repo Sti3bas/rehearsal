@@ -1,5 +1,26 @@
+import { expect } from "@playwright/test";
 import type { BrowserContext } from "@playwright/test";
+import type { Laravel } from "./client.js";
 import { loopback } from "./transport.js";
+
+export class Reverb {
+  constructor(private laravel: Laravel) {}
+
+  subscribed(channel: string) {
+    return this.laravel.operation<boolean>("reverb.subscribed", { channel });
+  }
+
+  async waitForSubscriber(channel: string, options: { timeout?: number } = {}) {
+    await expect.poll(() => this.subscribed(channel), {
+      timeout: options.timeout ?? 10_000,
+      message: "waiting for a subscriber on " + channel,
+    }).toBe(true);
+  }
+
+  broadcast(channel: string, event: string, payload: Record<string, unknown> = {}) {
+    return this.laravel.operation<null>("reverb.broadcast", { channel, event, payload });
+  }
+}
 
 export interface ReverbClientConfig {
   key: string;

@@ -47,6 +47,8 @@ final readonly class Control
             'queue.drain' => $this->drain($data),
             'route.mock' => RouteMocks::register($attempt, $data, false),
             'route.fault' => RouteMocks::register($attempt, $data, true),
+            'reverb.subscribed' => app(Reverb::class)->subscribed($data),
+            'reverb.broadcast' => app(Reverb::class)->broadcast($data),
             default => $this->operations->invoke($input['name'], $data),
         };
 

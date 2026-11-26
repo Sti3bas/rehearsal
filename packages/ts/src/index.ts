@@ -1,6 +1,6 @@
 import { test as base, type APIRequestContext } from "@playwright/test";
 import { Laravel, startAttempt } from "./client.js";
-import { injectReverb } from "./reverb.js";
+import { injectReverb, Reverb } from "./reverb.js";
 import { loopback, managedLaunch, protocol } from "./transport.js";
 
 interface RunConnection {
@@ -62,7 +62,10 @@ export const test = base.extend<{ laravel: Laravel }, WorkerOptions>({
   },
 });
 
-export const reverbTest = test.extend({
+export const reverbTest = test.extend<{ reverb: Reverb }>({
+  reverb: async ({ laravel }, use) => {
+    await use(new Reverb(laravel));
+  },
   context: async ({ context, laravel, baseURL }, use) => {
     if (!baseURL) throw new Error("The Rehearsal Reverb plugin requires a frontend baseURL.");
     await injectReverb(context, baseURL, laravel.integrationMetadata("reverb"));

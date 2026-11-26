@@ -153,6 +153,16 @@ Add entries to the **existing** `integrations` array in the published config, ke
 - **Mailpit:** The integration configures the default test mailer. Explicit app-specific mailers should never point at live SMTP during a test.
 - **Reverb:** Run a separate daemon from the same checkout with `APP_ENV=playwright REHEARSAL_REVERB_SERVER=true php artisan reverb:start --host=127.0.0.1 --port=18080`. Import `reverbTest as test` in browser specs and configure your Echo client with the `key`, `host`, and `port` from `globalThis.__REHEARSAL_REVERB__` before it starts. The publisher secret stays server-side.
 
+After loading your frontend, wait for Echo to join and then publish on the attempt's real Reverb application:
+
+```ts
+await reverb.waitForSubscriber("private-listings.3");
+await reverb.broadcast("private-listings.3", "ListingUpdated", { id: 3 });
+await expect(page.getByText("Listing updated")).toBeVisible();
+```
+
+Both helpers use the exact wire channel and event names. Use `await reverb.subscribed(channel)` for a non-polling occupancy check. Assert frontend behavior to verify delivery; the publisher can only report whether Reverb accepted the event.
+
 See [the working example config](examples/laravel/config/rehearsal.php) and [disposable services](examples/laravel/compose.integrations.yml).
 
 ### Write an integration
