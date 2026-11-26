@@ -47,6 +47,18 @@ for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
     await expect(page.locator("li")).toHaveText(["Baseline", name]);
   });
 
+  test("Nitro automatically binds global and imported fetch to " + name + "'s slot", async ({ laravel, page, request }) => {
+    await laravel.factory("User", { name, email: "nitro@example.test" });
+    const url = "http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT + "/api/state";
+    const response = await page.request.get(url);
+    expect(response.ok()).toBe(true);
+    const { global, imported, redirect } = await response.json();
+    expect(global.users).toEqual(["Baseline", name]);
+    expect(imported.users).toEqual(global.users);
+    expect(redirect).toBe(302);
+    expect((await request.get(url)).ok()).toBe(false);
+  });
+
   test("isolates shared browser and SSR route mocks for " + name, async ({ laravel, page, baseURL }) => {
     await page.goto("/");
     const state = (path: string) => ({ url: path, method: "get" as const });

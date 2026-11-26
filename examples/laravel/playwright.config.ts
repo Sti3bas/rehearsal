@@ -10,6 +10,7 @@ const reverb = process.env.REHEARSAL_E2E_REVERB === "true";
 const ssrPort = process.env.REHEARSAL_E2E_NUXT_PORT;
 const laravel = laravelServer({
   port,
+  server: process.env.REHEARSAL_E2E_FRANKENPHP === "true" ? "frankenphp" : "artisan",
   integrations: {
     ...(scout ? { REHEARSAL_INTEGRATION_SCOUT: scout } : {}),
     ...(serviceHost ? { REHEARSAL_INTEGRATION_SERVICE_HOST: serviceHost } : {}),
@@ -33,6 +34,7 @@ export default defineConfig({
     ...(scout ? [] : ["**/services.spec.ts"]),
     ...(reverb ? [] : ["**/reverb.spec.ts"]),
     ...(ssrPort ? [] : ["**/ssr.spec.ts"]),
+    ...(ssrPort && scout === "typesense" ? [] : ["**/nuxt-typesense.spec.ts"]),
   ],
   fullyParallel: true,
   workers: Number(process.env.REHEARSAL_E2E_WORKERS ?? 4),
@@ -45,7 +47,11 @@ export default defineConfig({
       cwd: fileURLToPath(new URL("../nuxt/", import.meta.url)),
       url: "http://127.0.0.1:" + Number(ssrPort) + "/api/ready",
       timeout: 120_000,
-      env: { NUXT_REHEARSAL_ENABLED: "true", NUXT_REHEARSAL_LARAVEL_ORIGIN: "http://127.0.0.1:" + port },
+      env: {
+        NUXT_REHEARSAL_ENABLED: "true",
+        NUXT_REHEARSAL_LARAVEL_ORIGIN: "http://127.0.0.1:" + port,
+        NUXT_REHEARSAL_TYPESENSE: String(scout === "typesense"),
+      },
     },
   ] : laravel,
 });

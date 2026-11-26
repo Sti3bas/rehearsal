@@ -99,6 +99,7 @@ jobs:
       - name: Start disposable services
         env:
           SERVICE_HOST: ${{ matrix.scout == 'typesense' && '[::1]' || '127.0.0.1' }}
+          REHEARSAL_TYPESENSE_CORS_ORIGINS: http://127.0.0.1:8100,http://127.0.0.1:8325
         run: |
           export REHEARSAL_UID="$(id -u)" REHEARSAL_GID="$(id -g)"
           REVERB_SCALING_ENABLED=true docker compose -f examples/laravel/compose.integrations.yml up --build --detach
@@ -111,14 +112,29 @@ jobs:
           REHEARSAL_E2E_SCOUT: ${{ matrix.scout }}
           REHEARSAL_E2E_SERVICE_HOST: ${{ matrix.scout == 'typesense' && '[::1]' || '127.0.0.1' }}
           REHEARSAL_E2E_WORKERS: '4'
+      - if: matrix.scout == 'typesense'
+        run: npm run e2e -- nuxt-typesense.spec.ts
+        env:
+          REHEARSAL_E2E_SCOUT: typesense
+          REHEARSAL_E2E_PORT: '8101'
+          REHEARSAL_E2E_NUXT_PORT: '8325'
+          REHEARSAL_E2E_WORKERS: '4'
       - if: matrix.scout == 'database'
         run: npm run e2e -- reverb.spec.ts
         env:
           REHEARSAL_E2E_REVERB: 'true'
           REHEARSAL_E2E_WORKERS: '4'
       - if: matrix.scout == 'database'
+        name: Install FrankenPHP
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/frankenphp" https://github.com/php/frankenphp/releases/download/v1.12.6/frankenphp-linux-x86_64
+          echo "fa74f59593d32f43be9f2803de08cdeed06e9ae5d654a912a086b92b9b290394  $RUNNER_TEMP/frankenphp" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/frankenphp"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - if: matrix.scout == 'database'
         run: npm run e2e -- ssr.spec.ts
         env:
+          REHEARSAL_E2E_FRANKENPHP: 'true'
           REHEARSAL_E2E_PORT: '8101'
           REHEARSAL_E2E_NUXT_PORT: '8325'
           REHEARSAL_E2E_WORKERS: '4'

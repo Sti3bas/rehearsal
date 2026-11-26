@@ -72,6 +72,7 @@ final class ServiceProvider extends LaravelProvider
         Route::post('/_rehearsal/start', [Control::class, 'start']);
         Route::post('/_rehearsal/call', [Control::class, 'call']);
         Route::get('/_rehearsal/route-mock', [RouteMocks::class, 'resolve']);
+        Route::get('/_rehearsal/typesense', [Control::class, 'typesense']);
         Route::post('/_rehearsal/login', [Control::class, 'login'])
             ->middleware([EncryptCookies::class, AddQueuedCookiesToResponse::class, StartSession::class]);
     }
