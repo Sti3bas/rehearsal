@@ -33,6 +33,14 @@ test.describe("slot reuse", () => {
   });
 });
 
+test("applies Meilisearch settings keyed by index name", async ({ laravel }) => {
+  test.skip(process.env.REHEARSAL_E2E_SCOUT !== "meilisearch", "Meilisearch-specific index settings.");
+  await laravel.factory("User", { name: "Probe matching" });
+  await laravel.factory("User", { name: "Probe other" });
+  await expect.poll(() => laravel.operation("probe.search")).toEqual(expect.arrayContaining(["Probe matching", "Probe other"]));
+  await expect(laravel.operation("probe.search", { name: "Probe matching" })).resolves.toEqual(["Probe matching"]);
+});
+
 test("does not index rolled-back factory rows", async ({ laravel }) => {
   test.skip(process.env.REHEARSAL_E2E_SCOUT === "database", "Database search has no remote documents.");
   await expect(laravel.factory([

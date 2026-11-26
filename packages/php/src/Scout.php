@@ -55,6 +55,7 @@ final class Scout implements Integration
         if ($engine === 'database') {
             return;
         }
+        $originalPrefix = (string) config('scout.prefix');
         $this->configure($engine, $attempt);
         $path = $attempt->path('scout.json');
         $state = $this->read($path);
@@ -95,8 +96,14 @@ final class Scout implements Integration
             }
             $state['indexes'][] = $name;
             $this->write($path, $state);
-            if ($engine === 'meilisearch' && $settings = config('scout.meilisearch.index-settings.'.$class)) {
-                $this->wait($this->api()->patch('/indexes/'.$name.'/settings', $settings)->throw());
+            if ($engine === 'meilisearch') {
+                $configured = (array) config('scout.meilisearch.index-settings', []);
+                $logicalName = substr($name, strlen($this->prefix($attempt)));
+                $settings = $configured[$name] ?? $configured[$originalPrefix.$logicalName]
+                    ?? $configured[$logicalName] ?? $configured[$class] ?? [];
+                if ($settings) {
+                    $this->wait($this->api()->patch('/indexes/'.$name.'/settings', $settings)->throw());
+                }
             }
         }
 

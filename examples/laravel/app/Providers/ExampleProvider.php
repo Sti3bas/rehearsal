@@ -28,13 +28,19 @@ final class ExampleProvider extends ServiceProvider
             Bus::dispatch(new WriteProbe($data['value']));
         });
         if (config('rehearsal.scout.engine')) {
+            if (config('rehearsal.scout.engine') === 'meilisearch') {
+                config(['scout.meilisearch.index-settings.users' => ['filterableAttributes' => ['name']]]);
+            }
             $ops = $this->app->make(Operations::class);
             $ops->register('probe.mail', ['title' => 'required|string|max:100'], function (array $data): void {
                 Mail::raw('Message content', fn ($mail) => $mail->to('receiver@example.test')->subject($data['title']));
             });
             $ops->register('probe.inbox', [], fn () => array_column(app(Mailpit::class)->messages(app(Attempt::class)), 'Subject'));
-            $ops->register('probe.search', [], function (): array {
+            $ops->register('probe.search', ['name' => 'sometimes|string|max:100'], function (array $data): array {
                 $search = User::search('Probe');
+                if (isset($data['name'])) {
+                    $search->where('name', $data['name']);
+                }
 
                 return match (config('scout.driver')) {
                     'typesense' => array_map(fn ($hit) => $hit['document']['name'], $search->options(['query_by' => 'name'])->raw()['hits']),
