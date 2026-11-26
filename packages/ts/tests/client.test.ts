@@ -29,6 +29,15 @@ describe("client", () => {
     expect(loopback(new URL("http://localhost.evil.example:8100"))).toBe(false);
   });
 
+  it("uses Typesense metadata under a custom integration name", () => {
+    const origin = "http://127.0.0.1:8100";
+    const config = { origin: "http://127.0.0.1:8108", collectionPrefix: "worker_", searchKey: "search-only" };
+    const client = new Laravel(origin, {} as APIRequestContext, "cap", "attempt", origin, {
+      search: { engine: "typesense", ...config },
+    });
+    expect(client.typesense()).toEqual(config);
+  });
+
   it("uses the root path for the configured Laravel origin", () => {
     const origin = "http://127.0.0.1:8100";
     expect(routePattern(origin, origin)).toEqual({ path: "/", method: undefined });

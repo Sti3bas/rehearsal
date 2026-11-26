@@ -4,7 +4,7 @@ services:
     ports: ["127.0.0.1:11025:1025", "127.0.0.1:18025:8025", "[::1]:11025:1025", "[::1]:18025:8025"]
   typesense:
     image: mirror.gcr.io/typesense/typesense:29.0
-    command: ["--data-dir=/tmp", "--api-key=rehearsal_test_only"]
+    command: ["--data-dir=/tmp", "--api-key=rehearsal_test_only", "--enable-cors", "--cors-domains=${REHEARSAL_TYPESENSE_CORS_ORIGINS:-http://127.0.0.1:8100}"]
     ports: ["127.0.0.1:18108:8108", "[::1]:18108:8108"]
   meilisearch:
     image: mirror.gcr.io/getmeili/meilisearch:v1.16

@@ -87,7 +87,7 @@ await laravel.route(listings.show({ listing: slug })).respond({ status: 404, onc
 
 Pass a URL at the Laravel origin, a path (with `*` for a segment or `**` across segments), or a Wayfinder object or route function and its parameters. Wayfinder objects also match the HTTP method. Supports JSON, text bodies, headers, status, delays (milliseconds), browser aborts and network errors. If a pattern includes a query string it is matched; otherwise queries are ignored. Newest matching registration wins; `once` is shared between browser and SSR, including across browser contexts bound to the attempt. The Nuxt module uses MSW for fetches using `useRehearsalFetch()` in forwarding mode. Browser routes apply only to Playwright contexts bound to the attempt and HTTP requests to Laravel, not third-party assets.
 
-For traffic that must actually reach Laravel, allowlist paths or glob patterns in `rehearsal.fault_paths`, then use `await laravel.route("/api/listings/**").fault({ status: 503, once: true })`. A delay without a response lets the real route run afterward. Each attempt starts with no rules.
+For traffic that must actually reach Laravel, allowlist paths or glob patterns in `rehearsal.fault_paths`, then use `await laravel.route("/api/listings/**").fault({ status: 503, once: true })`. A delay without a response lets the real route run afterward. A headers-only fault returns an empty HTTP 200 with those headers instead of running the route. Each attempt starts with no rules.
 
 #### Fake outbound Laravel HTTP
 
@@ -170,6 +170,7 @@ Add entries to the **existing** `integrations` array in the published config, ke
     'origin' => 'http://127.0.0.1:8108',
     'admin_key' => env('REHEARSAL_SCOUT_ADMIN_KEY'),
     'models' => [\App\Models\User::class],
+    'baseline_models' => [\App\Models\User::class], // optional, Typesense only
 ],
 'reverb' => [
     'origin' => 'http://127.0.0.1:18080',
@@ -177,9 +178,13 @@ Add entries to the **existing** `integrations` array in the published config, ke
 ],
 ```
 
-- **Scout:** Custom search/index names must honor `scout.prefix`. For remote engines, list the searchable models and configure their index/collection schema as you normally would. Remote indexes start empty; index baseline records in a named operation if a test needs them. The database engine needs no search container or admin key.
+- **Scout:** Custom search/index names must honor `scout.prefix`. For remote engines, list the searchable models and configure their schemas as you normally would. The database engine needs no search container or admin key.
 - **Mailpit:** The integration configures the default test mailer. Explicit app-specific mailers should never point at live SMTP during a test.
 - **Reverb:** Run a separate daemon from the same checkout with `APP_ENV=playwright REHEARSAL_REVERB_SERVER=true php artisan reverb:start --host=127.0.0.1 --port=18080`. Import `reverbTest as test` in browser specs and configure your Echo client with the `key`, `host`, and `port` from `globalThis.__REHEARSAL_REVERB__` before it starts. The publisher secret stays server-side.
+
+**Typesense baselines and browser search.** Seed the database baseline as usual (for example, with `rehearsal.database.seeder`), put Scout after Database in `integrations`, and list the models to reimport under `scout.baseline_models`. Rehearsal imports those models from the restored slot DB with Scout on every attempt. Without that list, collections start empty. Define schemas under Laravel Scout's `scout.typesense.model-settings.<model>.collection-schema` or via `typesenseCollectionSchema()`. For schemas with `reference` fields, list the referenced models before their dependents in `models`; Rehearsal retargets those references to the slot's collections.
+
+Pass `laravel.typesense()` to your browser's test setup to configure direct Typesense search. It returns `{ origin, collectionPrefix, searchKey }`. Use the prefix with the model's collection suffix (for example, `${collectionPrefix}users`) and send the key as `X-TYPESENSE-API-KEY`. Enable CORS on the disposable Typesense server for browser access. The key permits only document searches in the slot's collections and is revoked at the next reset or at teardown; admin and backend write keys stay server-side.
 
 After loading your frontend, wait for Echo to join and then publish on the attempt's real Reverb application:
 
@@ -288,7 +293,20 @@ const { data } = await useFetch("/api/users", {
 });
 ```
 
-For direct calls, use `const fetchLaravel = useRehearsalFetch()` in setup and call it like `$fetch`. Set `NUXT_REHEARSAL_ENABLED=true` **only** in the Nuxt process launched by Playwright. The test relay defaults to `http://127.0.0.1:8100`; if Playwright launches Laravel on a different port, set `NUXT_REHEARSAL_LARAVEL_ORIGIN` in the same process. When enabled, the relay accepts only that loopback origin and forwards the attempt marker, not cookies or the control capability. In the browser or while disabled, the composable returns Nuxt's ordinary `$fetch`, so keep your app's usual URL or `baseURL`. See the [Nuxt example](examples/nuxt/nuxt.config.ts) and [Playwright server setup](examples/laravel/playwright.config.ts).
+For direct calls, use `const fetchLaravel = useRehearsalFetch()` in setup and call it like `$fetch`. Set `NUXT_REHEARSAL_ENABLED=true` **only** in the Nuxt process launched by Playwright. The test relay defaults to `http://127.0.0.1:8100`; if Playwright launches Laravel on a different port, set `NUXT_REHEARSAL_LARAVEL_ORIGIN` in the same process. In the browser or while disabled, the composable returns Nuxt’s ordinary `$fetch`, so keep your app’s usual URL or `baseURL`.
+
+For Sanctum SPA auth, use the same loopback hostname on different ports. Add the frontend host and port to Sanctum’s stateful domains, enable stateful API middleware and configure Laravel CORS for the frontend origin with credentials enabled. In the browser, request `/sanctum/csrf-cookie` with credentials and send the decoded XSRF cookie in `X-XSRF-TOKEN` on writes. Rehearsal lets Laravel handle cookie-less CORS preflights on configured paths without binding an attempt. Actual requests still require the attempt marker; Laravel stores sessions in the isolated slot database.
+
+For authenticated SSR, opt in to forwarding just the browser cookies your app needs:
+
+```ts
+export default defineNuxtConfig({
+  modules: ["@sti3bas/rehearsal/nuxt"],
+  rehearsal: { forwardCookies: ["rehearsal-session", "XSRF-TOKEN"] },
+});
+```
+
+`rehearsal-session` selects the current slot’s dynamically named Laravel session cookie. Other entries are exact cookie names. By default the relay forwards no cookies. With the allowlist enabled, `useRehearsalFetch()` forwards those cookies from a marked loopback Nuxt request to the configured loopback Laravel origin only. It neither follows redirects nor sends the control capability. The module does not replace a Sanctum client or automatically relay upstream `Set-Cookie`; use the browser for login and CSRF initialization. See the [Nuxt example](examples/nuxt/nuxt.config.ts) and [Playwright server setup](examples/laravel/playwright.config.ts).
 
 ## CI and performance
 
@@ -331,6 +349,8 @@ REHEARSAL_E2E_REVERB=true REHEARSAL_E2E_WORKERS=4 npm run e2e -- reverb.spec.ts
 REHEARSAL_E2E_NUXT_PORT=8325 REHEARSAL_E2E_WORKERS=4 npm run e2e -- ssr.spec.ts
 docker compose -f examples/laravel/compose.integrations.yml down
 ```
+
+The example Typesense container binds to loopback and allows browser requests only from `http://127.0.0.1:8100` by default. If you use a different frontend origin, set `REHEARSAL_TYPESENSE_CORS_ORIGINS` to the expected origin (or comma-separated origins) when starting Compose. The example's public admin key is for this disposable container only; never reuse it or expose the service outside loopback.
 
 ## Security model
 

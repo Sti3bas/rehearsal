@@ -12,6 +12,12 @@ export interface FactoryDefinition {
   count?: number;
 }
 
+export interface TypesenseClientConfig {
+  origin: string;
+  collectionPrefix: string;
+  searchKey: string;
+}
+
 type Row = Record<string, unknown>;
 type FactoryResult = Row | Row[];
 
@@ -49,6 +55,17 @@ export class Laravel {
 
   integrationMetadata(name: string): unknown {
     return Object.hasOwn(this.metadata, name) ? this.metadata[name] : undefined;
+  }
+
+  typesense(): TypesenseClientConfig {
+    const scout = Object.values(this.metadata).find((value): value is TypesenseClientConfig => {
+      const candidate = value as (Partial<TypesenseClientConfig> & { engine?: unknown }) | null;
+      return candidate?.engine === "typesense" && typeof candidate.origin === "string"
+        && typeof candidate.collectionPrefix === "string" && typeof candidate.searchKey === "string";
+    });
+    if (!scout) throw new Error("Rehearsal Typesense is not enabled.");
+    const { origin, collectionPrefix, searchKey } = scout;
+    return { origin, collectionPrefix, searchKey };
   }
 
   mailbox(recipient: string) {

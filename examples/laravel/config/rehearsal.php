@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Category;
 use App\Models\User;
 use Sti3bas\Rehearsal\Clock;
 use Sti3bas\Rehearsal\Database;
@@ -28,7 +29,8 @@ return [
         'engine' => $engine,
         'origin' => $engine === 'typesense' ? "http://$serviceHost:18108" : 'http://127.0.0.1:17700',
         'admin_key' => 'rehearsal_test_only',
-        'models' => [User::class],
+        'models' => $engine === 'typesense' ? [Category::class, User::class] : [User::class],
+        'baseline_models' => $engine === 'typesense' ? [Category::class, User::class] : [],
     ],
     'database' => [
         'driver' => env('DB_CONNECTION', 'sqlite'),

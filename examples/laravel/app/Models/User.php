@@ -15,6 +15,11 @@ final class User extends Authenticatable
 
     protected $hidden = ['password'];
 
+    protected function casts(): array
+    {
+        return ['password' => 'hashed'];
+    }
+
     public function getConnectionName()
     {
         return parent::getConnectionName() ?? 'members';
@@ -22,11 +27,8 @@ final class User extends Authenticatable
 
     public function toSearchableArray(): array
     {
-        return ['id' => (string) $this->id, 'name' => $this->name];
-    }
+        $document = ['id' => (string) $this->id, 'name' => $this->name];
 
-    public function typesenseCollectionSchema(): array
-    {
-        return ['fields' => [['name' => 'name', 'type' => 'string']]];
+        return config('scout.driver') === 'typesense' ? $document + ['category_id' => '1'] : $document;
     }
 }
