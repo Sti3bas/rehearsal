@@ -284,8 +284,6 @@ The browser's signed, HTTP-only cookie routes ordinary app requests to the test 
 - **Playwright alone** is enough when you already provision isolated state outside the test runner, or tests only use public interfaces and don't need fixture setup.
 - **Rehearsal** is for teams that want native Playwright Test in TypeScript and need Laravel state reset and optional integrations per parallel worker.
 
-## Credits and license
-
-Rehearsal was built from scratch. The Laravel–Playwright bridge and dedicated test environment were inspired by [Saucebase Laravel Playwright](https://github.com/sauce-base/laravel-playwright).
+## License
 
 [Composer package](packages/php/README.md) · [npm package](packages/ts/README.md) · [MIT License](LICENSE) · [Logo](assets/logo.svg) · [Mark](assets/mark.svg)
