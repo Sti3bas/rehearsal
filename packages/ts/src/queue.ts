@@ -38,21 +38,27 @@ export class Queue {
 
   async drainUntil(assertion: () => unknown, options: DrainOptions & { timeout?: number; interval?: number } = {}) {
     const { timeout = 10_000, interval = 100, ...drainOptions } = options;
-    const deadline = Date.now() + timeout;
-    while (true) {
+    const deadline = performance.now() + timeout;
+    let lastError: unknown;
+    while (performance.now() < deadline) {
       const result = await this.drain(drainOptions);
       if (result.code !== 0 || result.failed) {
         const details = result.failures.map(({ job, exception }) => `${job}: ${exception}`).join(", ");
         throw new Error(`Rehearsal queue drain failed (exit ${result.code}, ${result.failed} failed jobs)${details ? ": " + details : ""}.`);
       }
+      if (performance.now() >= deadline) break;
       try {
         await assertion();
-        return result;
       } catch (error) {
-        const remaining = deadline - Date.now();
-        if (remaining <= 0) throw error;
+        lastError = error;
+        const remaining = deadline - performance.now();
+        if (remaining <= 0) break;
         await new Promise((resolve) => setTimeout(resolve, Math.min(interval, remaining)));
+        continue;
       }
+      if (performance.now() < deadline) return result;
+      break;
     }
+    throw new Error(`Rehearsal queue drain timed out after ${timeout} ms.`, { cause: lastError });
   }
 }
