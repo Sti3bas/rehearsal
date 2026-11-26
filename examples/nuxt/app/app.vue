@@ -1,8 +1,6 @@
 <script setup lang="ts">
-const { data } = await useAsyncData("state", async () => {
-  const response = await useNuxtApp().$rehearsalFetch("/state");
-  if (!response.ok) throw createError({ statusCode: response.status });
-  return await response.json() as { users: string[] };
+const { data } = await useFetch<{ users: string[] }>("/state", {
+  $fetch: useRehearsalFetch(),
 });
 </script>
 

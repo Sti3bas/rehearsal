@@ -6,4 +6,6 @@
 
 The packages are not published yet. See the [project README](https://github.com/Sti3bas/rehearsal#readme) for requirements, the starter, and the complete quickstart.
 
+On Nuxt 4, add `modules: ["@sti3bas/rehearsal/nuxt"]` to `nuxt.config.ts` and pass `$fetch: useRehearsalFetch()` to Laravel-facing `useFetch` calls. Enable forwarding only in the test server with `NUXT_REHEARSAL_ENABLED=true`. See the [Nuxt setup](https://github.com/Sti3bas/rehearsal#nuxt-4) for the defaults and overrides.
+
 [MIT License](https://github.com/Sti3bas/rehearsal/blob/main/LICENSE)

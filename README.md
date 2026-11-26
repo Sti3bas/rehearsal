@@ -207,8 +207,28 @@ For purpose-built Artisan wrappers, add aliases under `rehearsal.artisan` with a
 
 For a separate local frontend, keep its URL in Playwright's `baseURL` and set the Rehearsal `laravelURL` fixture option to the Laravel origin. If Laravel runs outside the test working directory, also set `rehearsalRoot` and `laravelServer({ cwd: ... })` to its root. Both origins must be loopback HTTP.
 
-- **Nuxt:** copy the [server-only plugin](examples/nuxt/app/plugins/rehearsal.server.ts) and set the [private runtime config](examples/nuxt/nuxt.config.ts). Use the injected fetch for server-side Laravel requests. It forwards the attempt marker only to the configured Laravel origin, not session cookies or the control capability.
 - **Inertia/Vite:** same-origin Laravel controllers do not need a relay. If your separate SSR process calls Laravel itself, transport the marker on the trusted server-to-server hop and pass that request's headers to `rehearsalSsrFetch` from `@sti3bas/rehearsal/ssr`. Stock Inertia SSR does not forward it automatically. Keep the marker out of page props, HTML, and hydration payloads.
+
+### Nuxt 4
+
+Add the module to `nuxt.config.ts`; no plugin files to copy. If your package manager doesn't expose Nuxt's `@nuxt/kit` to peer dependencies, install `@nuxt/kit@^4` alongside the npm package.
+
+```ts
+export default defineNuxtConfig({
+  modules: ["@sti3bas/rehearsal/nuxt"],
+});
+```
+
+Opt your Laravel requests into the relay with the auto-imported `useRehearsalFetch()`:
+
+```ts
+const { data } = await useFetch("/api/users", {
+  baseURL: apiBase, // your existing Laravel API URL
+  $fetch: useRehearsalFetch(),
+});
+```
+
+For direct calls, use `const fetchLaravel = useRehearsalFetch()` in setup and call it like `$fetch`. Set `NUXT_REHEARSAL_ENABLED=true` **only** in the Nuxt process launched by Playwright. The test relay defaults to `http://127.0.0.1:8100`; if Playwright launches Laravel on a different port, set `NUXT_REHEARSAL_LARAVEL_ORIGIN` in the same process. When enabled, the relay accepts only that loopback origin and forwards the attempt marker, not cookies or the control capability. In the browser or while disabled, the composable returns Nuxt's ordinary `$fetch`, so keep your app's usual URL or `baseURL`. See the [Nuxt example](examples/nuxt/nuxt.config.ts) and [Playwright server setup](examples/laravel/playwright.config.ts).
 
 ## CI and performance
 

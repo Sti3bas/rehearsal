@@ -16,16 +16,16 @@ export function rehearsalSsrFetch({ enabled, laravelOrigin, requestHeaders }: Ss
     .find((part) => part.startsWith(markerCookie + "="))?.slice(markerCookie.length + 1);
   const marker = received.get(markerHeader) ?? cookie;
 
-  return (path: string, init: RequestInit = {}) => {
-    const target = new URL(path, origin);
+  return (path: string | URL | Request, init: RequestInit = {}) => {
+    const target = new URL(path instanceof Request ? path.url : path, origin);
     if (target.origin !== origin.origin || target.username || target.password) {
       throw new Error("Rehearsal SSR fetch can only call its configured Laravel origin.");
     }
-    const headers = new Headers(init.headers);
+    const headers = new Headers(init.headers ?? (path instanceof Request ? path.headers : undefined));
     headers.delete(markerHeader);
     headers.delete(capabilityHeader);
     if (enabled && marker && signedMarker.test(marker)) headers.set(markerHeader, marker);
 
-    return fetch(target, { ...init, headers, redirect: "manual" });
+    return fetch(path instanceof Request ? path : target, { ...init, headers, redirect: "manual" });
   };
 }

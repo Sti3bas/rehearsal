@@ -8,11 +8,15 @@
   "exports": {
     ".": {"types": "./dist/index.d.ts", "default": "./dist/index.js"},
     "./ssr": {"types": "./dist/ssr.d.ts", "default": "./dist/ssr.js"},
+    "./nuxt": {"types": "./dist/nuxt.d.ts", "default": "./dist/nuxt.js"},
     "./reporter": {"types": "./dist/reporter.d.ts", "default": "./dist/reporter.js"}
   },
   "files": ["dist"],
-  "peerDependencies": {"@playwright/test": "^1.65.1"},
+  "dependencies": {"ofetch": "^1.5.1"},
+  "peerDependencies": {"@nuxt/kit": "^4.0.0", "@playwright/test": "^1.65.1"},
+  "peerDependenciesMeta": {"@nuxt/kit": {"optional": true}},
   "devDependencies": {
+    "@nuxt/kit": "^4.0.0",
     "@playwright/test": "^1.65.1",
     "@types/node": "^22.0.0",
     "typescript": "^5.8.0",
