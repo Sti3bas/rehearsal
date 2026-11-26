@@ -37,6 +37,9 @@ final class ServiceProvider extends LaravelProvider
             $this->app->singleton(Database::class);
             $this->app->make(Database::class)->isolateConnections();
         }
+        if (in_array(Filesystem::class, config('rehearsal.integrations'), true)) {
+            Filesystem::configureDisks($this->app->make(Run::class));
+        }
         $this->callAfterResolving(Kernel::class, static fn ($kernel) => $kernel->prependMiddleware(BindAttempt::class));
     }
 

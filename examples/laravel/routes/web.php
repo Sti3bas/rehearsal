@@ -9,6 +9,18 @@ use Illuminate\Support\Facades\Storage;
 Route::get('/', fn () => response('Rehearsal'));
 Route::get('/probe/redirect', fn () => redirect('/state'));
 Route::get('/probe/outside-db', fn () => ['configured' => config('database.connections.outside') !== null]);
+Route::get('/probe/public-file', function () {
+    $public = Storage::disk('public');
+    $public->put('probe.txt', 'public probe');
+
+    return ['url' => $public->url('probe.txt')];
+});
+Route::get('/probe/temporary-file', function () {
+    $private = Storage::disk('local');
+    $private->put('probe.txt', 'private probe');
+
+    return ['url' => $private->temporaryUrl('probe.txt', now()->addMinutes(5))];
+});
 Route::get('/probe/events', fn () => response()->eventStream(function () {
     yield new \Illuminate\Http\StreamedEvent(event: 'probe', data: 'ready');
     sleep(4);

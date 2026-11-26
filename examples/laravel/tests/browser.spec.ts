@@ -25,3 +25,21 @@ test("delivers server-sent events before the response finishes", async ({ page }
     });
   }))).toBe("ready");
 });
+
+test("serves public disk URLs from the bound slot", async ({ context }) => {
+  const info = await context.request.get("/probe/public-file");
+  expect(info.ok()).toBe(true);
+  const file = await context.request.get((await info.json()).url);
+  expect(file.ok()).toBe(true);
+  expect(await file.text()).toBe("public probe");
+});
+
+test("serves signed temporary disk URLs and refuses unsigned access", async ({ context }) => {
+  const info = await context.request.get("/probe/temporary-file");
+  expect(info.ok()).toBe(true);
+  const { url } = await info.json();
+  const file = await context.request.get(url);
+  expect(file.ok()).toBe(true);
+  expect(await file.text()).toBe("private probe");
+  expect((await context.request.get(url.split("?")[0])).status()).toBe(403);
+});

@@ -27,6 +27,7 @@ When published, install the Composer and npm packages as dev dependencies: `sti3
 - Publish config with `php artisan vendor:publish --tag=rehearsal-config` to select integrations, factory states, a baseline seeder or Artisan aliases.
 - For MySQL/PostgreSQL set `DB_CONNECTION`, the loopback host/port and the disposable credentials in `.env.playwright`, plus `REHEARSAL_DB_DISPOSABLE=true`. The account needs permission to create and drop databases. Do not use a server with development or production data. MySQL baselines support tables and data, not views, triggers, routines or events.
 - Named connections are disabled unless they match the selected driver or are listed in `rehearsal.database.aliases`. Allowed aliases share the same isolated database and transaction.
+- Generate test asset URLs with the disk's `url()` or `temporaryUrl()`; hardcoded `/storage/…` URLs still point at the application's public symlink, not the isolated disks.
 - Custom integrations implement `Sti3bas\Rehearsal\Integration` and are registered in `config/rehearsal.php`. The registry calls them in configuration order and cleans them up in reverse. Named operations register with `Sti3bas\Rehearsal\Operations`; validate inputs and keep handlers test-only.
 
 Rehearsal currently supports a classic per-request Laravel runtime. Separate SSR propagation, persistent worker runtimes, Mailpit, Scout/Typesense, and Reverb are outside milestone 1.
