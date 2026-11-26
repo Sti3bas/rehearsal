@@ -85,13 +85,14 @@ final class Reverb implements Integration, ClientMetadata
 
     public function broadcast(array $input): null
     {
-        abort_if(strlen(json_encode($input, JSON_THROW_ON_ERROR)) > 10_000, 422);
         $data = Validator::validate($input, [
             'channel' => self::channelRules(),
             'event' => ['required', 'string', 'max:200', 'regex:/\A[a-zA-Z0-9_:.\\\\-]+\z/', 'not_regex:/\Apusher(?:_internal)?:/i'],
-            'payload' => 'present|array',
+            'payloadJson' => 'required|string|max:10000|json',
         ]);
-        $this->broadcaster()->getPusher()->trigger($data['channel'], $data['event'], (object) $data['payload']);
+        abort_unless(str_starts_with(ltrim($data['payloadJson']), '{'), 422);
+        abort_if(strlen($data['payloadJson']) + strlen($data['channel']) + strlen($data['event']) > 10_000, 422);
+        $this->broadcaster()->getPusher()->trigger($data['channel'], $data['event'], $data['payloadJson'], already_encoded: true);
 
         return null;
     }

@@ -18,7 +18,7 @@ export class Reverb {
   }
 
   broadcast(channel: string, event: string, payload: Record<string, unknown> = {}) {
-    return this.laravel.operation<null>("reverb.broadcast", { channel, event, payload });
+    return this.laravel.operation<null>("reverb.broadcast", { channel, event, payloadJson: JSON.stringify(payload) });
   }
 }
 
