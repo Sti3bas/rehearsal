@@ -4,43 +4,17 @@
   "description": "Parallel Playwright testing for Laravel",
   "license": "MIT",
   "type": "module",
-  "engines": {
-    "node": "^22.18.0 || ^24.0.0"
-  },
+  "engines": {"node": "^22.18.0 || ^24.0.0"},
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
-    "./ssr": {
-      "types": "./dist/ssr.d.ts",
-      "default": "./dist/ssr.js"
-    },
-    "./nuxt": {
-      "types": "./dist/nuxt.d.ts",
-      "default": "./dist/nuxt.js"
-    },
-    "./reporter": {
-      "types": "./dist/reporter.d.ts",
-      "default": "./dist/reporter.js"
-    }
+    ".": {"types": "./dist/index.d.ts", "default": "./dist/index.js"},
+    "./ssr": {"types": "./dist/ssr.d.ts", "default": "./dist/ssr.js"},
+    "./nuxt": {"types": "./dist/nuxt.d.ts", "default": "./dist/nuxt.js"},
+    "./reporter": {"types": "./dist/reporter.d.ts", "default": "./dist/reporter.js"}
   },
-  "files": [
-    "dist"
-  ],
-  "dependencies": {
-    "msw": "^3.0.8",
-    "ofetch": "^1.5.1"
-  },
-  "peerDependencies": {
-    "@nuxt/kit": "^4.0.0",
-    "@playwright/test": "^1.65.1"
-  },
-  "peerDependenciesMeta": {
-    "@nuxt/kit": {
-      "optional": true
-    }
-  },
+  "files": ["dist"],
+  "dependencies": {"msw": "^3.0.8", "ofetch": "^1.5.1"},
+  "peerDependencies": {"@nuxt/kit": "^4.0.0", "@playwright/test": "^1.65.1"},
+  "peerDependenciesMeta": {"@nuxt/kit": {"optional": true}},
   "devDependencies": {
     "@nuxt/kit": "^4.0.0",
     "@playwright/test": "^1.65.1",
@@ -48,8 +22,5 @@
     "typescript": "^5.8.0",
     "vitest": "^5.1.2"
   },
-  "scripts": {
-    "build": "tsc",
-    "test": "vitest run"
-  }
+  "scripts": {"build": "tsc", "test": "vitest run"}
 }

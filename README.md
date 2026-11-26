@@ -70,6 +70,14 @@ php artisan vendor:publish --tag=rehearsal-config
 
 ### Fixture API
 
+| Call | What it does |
+| --- | --- |
+| `laravel.factory("User", attrs, { states, count })` | Creates a model or a batch. The model and state aliases must be registered in config. Pass an array of definitions to batch several factories into one call. |
+| `laravel.login({ id })` | Logs in the current browser context through the configured guard. Opt in with `'login' => ['guard' => 'web']`. |
+| `laravel.travel("2034-01-02T12:00:00.000Z")` | Sets Laravel's test clock and the fixed time on pages managed by the fixture. |
+| `laravel.artisan("about", {})` | Runs a configured alias, never an arbitrary Artisan command. |
+| `laravel.operation("reports.stage", input)` | Calls a named, validated application operation. |
+
 #### Mock Laravel routes
 
 ```ts
@@ -93,12 +101,9 @@ await laravel.http.fake({
 
 Rules are data only and apply to Laravel's HTTP client, not to a browser fetch or SDKs that use their own transport. A rule can specify `status`, `json` or `body`, headers, or `networkError`. To match a method or return a sequence, use `{ method: "POST", responses: [...] }`; the final response repeats. Calling `fake()` with a new map replaces the attempt's rules. Unmatched requests are blocked by default; allow them explicitly with `{ preventStrayRequests: false }` only when intentional.
 
-| Call | What it does |
-| --- | --- |
-| `laravel.factory("User", attrs, { states, count })` | Creates a model or a batch. The model and state aliases must be registered in config. Pass an array of definitions to batch several factories into one call. |
-| `laravel.login({ id })` | Logs in the current browser context through the configured guard. Opt in with `'login' => ['guard' => 'web']`. |
-| `laravel.travel("2034-01-02T12:00:00.000Z")` | Sets Laravel's test clock and the fixed time on pages managed by the fixture. |
-| `laravel.queue.drain({ queues, maxJobs })` | Runs bounded database queue work. Omit `queues` to use the configured allowlist, which defaults to Laravel's database queue name. Returns processed, pending, removed, and failed counts and failed job details. |
+#### Run queued and scheduled work
+
+`laravel.queue.drain({ queues, maxJobs })` runs bounded database queue work and returns processed, pending, removed, and failed counts and failed job details. Omit `queues` to use the configured allowlist, which defaults to Laravel's database queue name.
 
 Use `laravel.queue.failed()` to inspect failed jobs for the attempt. For work dispatched after a request returns, use `drainUntil` with an assertion rather than waiting for the pending count to reach zero:
 
@@ -112,8 +117,6 @@ await laravel.schedule.run(["expire-listings"], { drain: { queues: ["default"] }
 In `config/rehearsal.php`, register scheduled commands as
 `'schedule' => ['expire-listings' => ['command' => 'listings:expire']]`.
 An entry may include trusted `fixed` Artisan arguments. The helper runs only the named tasks once, in the attempt's app and clock; it does not evaluate cron timing or start a scheduler daemon. Omit `drain` to leave queued work pending.
-| `laravel.artisan("about", {})` | Runs a configured alias, never an arbitrary Artisan command. |
-| `laravel.operation("reports.stage", input)` | Calls a named, validated application operation. |
 
 ### How isolation works
 

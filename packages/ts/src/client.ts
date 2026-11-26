@@ -3,7 +3,7 @@ import { encodeHttpRules, type HttpFakeRules } from "./http.js";
 import { Mailbox } from "./mail.js";
 import { Queue, type DrainOptions, type DrainResult } from "./queue.js";
 import { capabilityHeader, loopback, markerCookie, markerHeader, protocol } from "./transport.js";
-import { claimRoute, matchesRoute, mockResponse, routePattern, type RouteResponse, type RouteTarget } from "./routes.js";
+import { claimRoute, encodeRouteResponse, matchesRoute, mockResponse, routePattern, type RouteResponse, type RouteTarget } from "./routes.js";
 
 export interface FactoryDefinition {
   model: string;
@@ -80,12 +80,12 @@ export class Laravel {
   private routeActions(pattern: ReturnType<typeof routePattern>) {
     return {
       respond: async (response: RouteResponse) => {
-        await this.operation("route.mock", { ...pattern, response });
+        await this.operation("route.mock", { ...pattern, response: encodeRouteResponse(response) });
         this.patterns.push(pattern);
         await Promise.all([...this.contexts].map((context) => this.installRouteMocks(context)));
       },
       fault: (response: Omit<RouteResponse, "abort" | "networkError">) =>
-        this.operation("route.fault", { ...pattern, response }),
+        this.operation("route.fault", { ...pattern, response: encodeRouteResponse(response) }),
     };
   }
 

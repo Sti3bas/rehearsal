@@ -18,9 +18,9 @@ final class RouteMocks
         $data = Validator::validate($input, [
             'path' => ['required', 'string', 'max:1024', 'starts_with:/', 'not_regex:/^\/\//'],
             'method' => ['nullable', 'string', Rule::in(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])],
-            'response' => 'required|array:status,json,body,headers,delay,abort,networkError,once',
+            'response' => 'required|array:status,jsonBody,body,headers,delay,abort,networkError,once',
             'response.status' => 'sometimes|integer|min:200|max:599',
-            'response.json' => 'sometimes',
+            'response.jsonBody' => 'sometimes|string|json|max:100000',
             'response.body' => 'sometimes|string|max:100000',
             'response.headers' => 'sometimes|array|max:20',
             'response.headers.*' => 'required|string|max:1024',
@@ -29,7 +29,7 @@ final class RouteMocks
             'response.networkError' => 'sometimes|boolean',
             'response.once' => 'sometimes|boolean',
         ]);
-        abort_if(isset($data['response']['body']) && array_key_exists('json', $data['response']), 422);
+        abort_if(isset($data['response']['body'], $data['response']['jsonBody']), 422);
         foreach ($data['response']['headers'] ?? [] as $name => $value) {
             abort_unless(preg_match('/\A[a-zA-Z0-9!#$%&\'*+.^_`|~-]+\z/', $name)
                 && ! preg_match('/[\r\n]/', $value), 422);
@@ -62,8 +62,8 @@ final class RouteMocks
         }
         usleep(($rule['delay'] ?? 0) * 1000);
         $headers = $rule['headers'] ?? [];
-        if (array_key_exists('json', $rule)) {
-            return response()->json($rule['json'], $rule['status'] ?? 200, $headers);
+        if (isset($rule['jsonBody'])) {
+            return new JsonResponse($rule['jsonBody'], $rule['status'] ?? 200, $headers, json: true);
         }
         if (isset($rule['status']) || isset($rule['body'])) {
             return response($rule['body'] ?? '', $rule['status'] ?? 200, $headers);
