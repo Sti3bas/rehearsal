@@ -9,3 +9,10 @@ test("batches states and runs only registered Artisan operations without opening
   expect(await laravel.artisan("about")).toEqual({ code: 0 });
   await expect(laravel.artisan("migrate:fresh")).rejects.toThrow("HTTP 404");
 });
+
+test("passes exact strings to factory attributes", async ({ laravel }) => {
+  expect(await laravel.factory([
+    { model: "User", attrs: { name: "" } },
+    { model: "User", attrs: { name: " Ada " } },
+  ])).toMatchObject([{ name: "" }, { name: " Ada " }]);
+});

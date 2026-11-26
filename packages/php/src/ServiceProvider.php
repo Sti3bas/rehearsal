@@ -7,6 +7,9 @@ namespace Sti3bas\Rehearsal;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
+use Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull;
+use Illuminate\Foundation\Http\Middleware\TrimStrings;
+use Illuminate\Http\Request;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider as LaravelProvider;
@@ -40,6 +43,10 @@ final class ServiceProvider extends LaravelProvider
         if (in_array(Filesystem::class, config('rehearsal.integrations'), true)) {
             Filesystem::configureDisks($this->app->make(Run::class));
         }
+        $control = static fn (Request $request) => app()->bound(Run::class) && $request->isMethod('POST')
+            && $request->is('_rehearsal/start', '_rehearsal/call', '_rehearsal/login');
+        TrimStrings::skipWhen($control);
+        ConvertEmptyStringsToNull::skipWhen($control);
         $this->callAfterResolving(Kernel::class, static fn ($kernel) => $kernel->prependMiddleware(BindAttempt::class));
     }
 
