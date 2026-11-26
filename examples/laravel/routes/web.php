@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -8,6 +9,12 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 
 Route::get('/', fn () => response('Rehearsal'));
+Route::post('/login', function (Request $request) {
+    abort_unless(Auth::attempt($request->validate(['email' => 'required|email', 'password' => 'required|string'])), 401);
+    $request->session()->regenerate();
+
+    return response()->noContent();
+});
 Route::get('/probe/redirect', fn () => redirect('/state'));
 Route::get('/probe/outside-db', fn () => ['configured' => config('database.connections.outside') !== null]);
 Route::get('/probe/moderation', function () {

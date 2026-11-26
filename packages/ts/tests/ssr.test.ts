@@ -48,3 +48,27 @@ it("adapts ofetch without forwarding cookies, capabilities, or credentials to an
   await expect(fetchLaravel("http://127.0.0.1:8101/state", { retry: false })).rejects.toThrow("configured Laravel origin");
   expect(fetch).toHaveBeenCalledTimes(1);
 });
+
+it("relays only allowlisted incoming cookies to an application route with an attempt", async () => {
+  const fetch = vi.fn(() => Promise.resolve(Response.json({})));
+  vi.stubGlobal("fetch", fetch);
+  const frontendOrigin = "http://127.0.0.1:8325";
+  const headers = new Headers({
+    cookie: `rehearsal_attempt=${marker}; laravel_session=from-browser; XSRF-TOKEN=a%3Db; third_party=private; X-Rehearsal-Capability=never`,
+  });
+  const cookieOptions = { names: ["laravel_session", "XSRF-TOKEN", "rehearsal_attempt", "X-Rehearsal-Capability"], frontendOrigin };
+  const fetchLaravel = createNuxtRehearsalFetch(laravelOrigin, headers, false, cookieOptions);
+  await fetchLaravel("/api/user", { headers: { cookie: "laravel_session=wrong", "x-rehearsal-capability": "never" } });
+  expect([...fetch.mock.calls[0][1].headers]).toEqual([
+    ["cookie", "laravel_session=from-browser; XSRF-TOKEN=a%3Db"],
+    ["origin", frontendOrigin],
+    ["x-rehearsal-attempt", marker],
+  ]);
+  await fetchLaravel("/_rehearsal/ready");
+  expect(fetch.mock.calls[1][1].headers.has("cookie")).toBe(false);
+  await expect(fetchLaravel("http://127.0.0.1:8101/api/user", { retry: false })).rejects.toThrow("configured Laravel origin");
+  expect(fetch).toHaveBeenCalledTimes(2);
+  const noAttempt = createNuxtRehearsalFetch(laravelOrigin, new Headers({ cookie: "laravel_session=private" }), false, cookieOptions);
+  await noAttempt("/api/user");
+  expect([...fetch.mock.calls[2][1].headers]).toEqual([]);
+});

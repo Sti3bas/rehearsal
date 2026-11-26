@@ -6,6 +6,7 @@ namespace Sti3bas\Rehearsal;
 
 use Closure;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Http\Middleware\HandleCors;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
@@ -20,6 +21,11 @@ final readonly class BindAttempt
 
     public function handle(Request $request, Closure $next): Response
     {
+        if ($request->isMethod('OPTIONS') && $request->headers->has('Origin')
+            && $request->headers->has('Access-Control-Request-Method')) {
+            return $this->app->make(HandleCors::class)->handle($request, static fn () => abort(403));
+        }
+
         if ($request->is('_rehearsal/ready', '_rehearsal/start')) {
             return $next($request);
         }

@@ -288,7 +288,20 @@ const { data } = await useFetch("/api/users", {
 });
 ```
 
-For direct calls, use `const fetchLaravel = useRehearsalFetch()` in setup and call it like `$fetch`. Set `NUXT_REHEARSAL_ENABLED=true` **only** in the Nuxt process launched by Playwright. The test relay defaults to `http://127.0.0.1:8100`; if Playwright launches Laravel on a different port, set `NUXT_REHEARSAL_LARAVEL_ORIGIN` in the same process. When enabled, the relay accepts only that loopback origin and forwards the attempt marker, not cookies or the control capability. In the browser or while disabled, the composable returns Nuxt's ordinary `$fetch`, so keep your app's usual URL or `baseURL`. See the [Nuxt example](examples/nuxt/nuxt.config.ts) and [Playwright server setup](examples/laravel/playwright.config.ts).
+For direct calls, use `const fetchLaravel = useRehearsalFetch()` in setup and call it like `$fetch`. Set `NUXT_REHEARSAL_ENABLED=true` **only** in the Nuxt process launched by Playwright. The test relay defaults to `http://127.0.0.1:8100`; if Playwright launches Laravel on a different port, set `NUXT_REHEARSAL_LARAVEL_ORIGIN` in the same process. In the browser or while disabled, the composable returns Nuxt’s ordinary `$fetch`, so keep your app’s usual URL or `baseURL`.
+
+For Sanctum SPA auth, use the same loopback hostname on different ports. Add the frontend host and port to Sanctum’s stateful domains, enable stateful API middleware and configure Laravel CORS for the frontend origin with credentials enabled. In the browser, request `/sanctum/csrf-cookie` with credentials and send the decoded XSRF cookie in `X-XSRF-TOKEN` on writes. Rehearsal lets Laravel handle cookie-less CORS preflights on configured paths without binding an attempt. Actual requests still require the attempt marker; Laravel stores sessions in the isolated slot database.
+
+For authenticated SSR, opt in to forwarding just the browser cookies your app needs:
+
+```ts
+export default defineNuxtConfig({
+  modules: ["@sti3bas/rehearsal/nuxt"],
+  rehearsal: { forwardCookies: ["rehearsal-session", "XSRF-TOKEN"] },
+});
+```
+
+`rehearsal-session` selects the current slot’s dynamically named Laravel session cookie. Other entries are exact cookie names. By default the relay forwards no cookies. With the allowlist enabled, `useRehearsalFetch()` forwards those cookies from a marked loopback Nuxt request to the configured loopback Laravel origin only. It neither follows redirects nor sends the control capability. The module does not replace a Sanctum client or automatically relay upstream `Set-Cookie`; use the browser for login and CSRF initialization. See the [Nuxt example](examples/nuxt/nuxt.config.ts) and [Playwright server setup](examples/laravel/playwright.config.ts).
 
 ## CI and performance
 

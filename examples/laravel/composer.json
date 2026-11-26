@@ -6,6 +6,7 @@
     "sti3bas/rehearsal": "@dev",
     "fakerphp/faker": "^1.23",
     "laravel/scout": "^11",
+    "laravel/sanctum": "^4.3",
     "laravel/reverb": "^1",
     "meilisearch/meilisearch-php": "^1",
     "typesense/typesense-php": "^6"

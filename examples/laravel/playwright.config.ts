@@ -14,6 +14,7 @@ const laravel = laravelServer({
     ...(scout ? { REHEARSAL_INTEGRATION_SCOUT: scout } : {}),
     ...(serviceHost ? { REHEARSAL_INTEGRATION_SERVICE_HOST: serviceHost } : {}),
     ...(reverb ? { REHEARSAL_INTEGRATION_REVERB: "true" } : {}),
+    ...(ssrPort ? { REHEARSAL_INTEGRATION_FRONTEND_ORIGIN: "http://127.0.0.1:" + Number(ssrPort) } : {}),
   },
   database: engine === "sqlite" ? {} : {
     DB_CONNECTION: engine,
