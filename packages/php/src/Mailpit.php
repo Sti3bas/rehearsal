@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Sti3bas\Rehearsal;
 
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use RuntimeException;
@@ -100,7 +100,7 @@ final class Mailpit implements Integration
         $origin = config('rehearsal.mailpit.api');
         LocalService::origin($origin);
 
-        return Http::baseUrl($origin)->acceptJson()->withoutRedirecting()->timeout(5);
+        return (new Factory)->baseUrl($origin)->acceptJson()->withoutRedirecting()->timeout(5);
     }
 
     private function search(string $tag): array

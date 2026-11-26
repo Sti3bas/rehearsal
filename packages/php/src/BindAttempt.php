@@ -39,6 +39,8 @@ final readonly class BindAttempt
                 return $fault;
             }
 
+            HttpFakes::bind($attempt);
+
             return $next($request);
         } finally {
             $this->app->terminating(static function () use ($lease): void {

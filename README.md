@@ -81,6 +81,18 @@ Pass a URL at the Laravel origin, a path (with `*` for a segment or `**` across 
 
 For traffic that must actually reach Laravel, allowlist paths or glob patterns in `rehearsal.fault_paths`, then use `await laravel.route("/api/listings/**").fault({ status: 503, once: true })`. A delay without a response lets the real route run afterward. Each attempt starts with no rules.
 
+#### Fake outbound Laravel HTTP
+
+```ts
+await laravel.http.fake({
+  "https://api.openai.com/v1/moderations*": {
+    json: { results: [{ flagged: false, categories: {} }] },
+  },
+});
+```
+
+Rules are data only and apply to Laravel's HTTP client, not to a browser fetch or SDKs that use their own transport. A rule can specify `status`, `json` or `body`, headers, or `networkError`. To match a method or return a sequence, use `{ method: "POST", responses: [...] }`; the final response repeats. Calling `fake()` with a new map replaces the attempt's rules. Unmatched requests are blocked by default; allow them explicitly with `{ preventStrayRequests: false }` only when intentional.
+
 | Call | What it does |
 | --- | --- |
 | `laravel.factory("User", attrs, { states, count })` | Creates a model or a batch. The model and state aliases must be registered in config. Pass an array of definitions to batch several factories into one call. |

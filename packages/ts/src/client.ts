@@ -1,4 +1,5 @@
 import type { APIRequestContext, BrowserContext, Page } from "@playwright/test";
+import { encodeHttpRules, type HttpFakeRules } from "./http.js";
 import { Mailbox } from "./mail.js";
 import { Queue, type DrainOptions, type DrainResult } from "./queue.js";
 import { capabilityHeader, loopback, markerCookie, markerHeader, protocol } from "./transport.js";
@@ -22,6 +23,10 @@ export class Laravel {
   private pages = new Set<Page>();
   private time?: Date;
   readonly queue = new Queue(this);
+  readonly http = {
+    fake: (rules: HttpFakeRules, options: { preventStrayRequests?: boolean } = {}) =>
+      this.operation<null>("http.fake", { rules: encodeHttpRules(rules), ...options }),
+  };
   readonly schedule = {
     run: async (names: string | string[], options: { drain?: DrainOptions } = {}) => {
       const result = await this.operation<{ results: { name: string; code: number }[]; drain: DrainResult | null }>(

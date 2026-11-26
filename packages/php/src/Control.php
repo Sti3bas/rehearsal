@@ -52,6 +52,7 @@ final readonly class Control
             'reverb.subscribed' => app(Reverb::class)->subscribed($data),
             'reverb.broadcast' => app(Reverb::class)->broadcast($data),
             'mail.inbox' => app(Mailpit::class)->mailbox($attempt, $data),
+            'http.fake' => HttpFakes::register($attempt, $data),
             default => $this->operations->invoke($input['name'], $data),
         };
 
