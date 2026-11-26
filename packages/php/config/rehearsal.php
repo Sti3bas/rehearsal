@@ -26,6 +26,7 @@ return [
         'User' => ['model' => App\Models\User::class, 'states' => []],
     ],
     'artisan' => [],
+    'fault_paths' => [],
     'login' => null,
     'mailpit' => ['api' => null, 'smtp_port' => 1025],
     'scout' => ['engine' => null, 'origin' => null, 'admin_key' => null, 'models' => []],

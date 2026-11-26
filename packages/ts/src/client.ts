@@ -1,5 +1,6 @@
 import type { APIRequestContext, BrowserContext, Page } from "@playwright/test";
 import { capabilityHeader, loopback, markerCookie, markerHeader, protocol } from "./transport.js";
+import { claimRoute, matchesRoute, mockResponse, routePattern, type RouteResponse, type RouteTarget } from "./routes.js";
 
 export interface FactoryDefinition {
   model: string;
@@ -13,6 +14,9 @@ type FactoryResult = Row | Row[];
 
 export class Laravel {
   private context?: BrowserContext;
+  private contexts = new Set<BrowserContext>();
+  private routeContexts = new WeakSet<BrowserContext>();
+  private patterns: ReturnType<typeof routePattern>[] = [];
   private pages = new Set<Page>();
   private time?: Date;
   readonly queue = {
@@ -43,6 +47,43 @@ export class Laravel {
       name: markerCookie, value: this.marker, url: origin + "/", httpOnly: true, sameSite: "Lax",
     })));
     this.context ??= context;
+    this.contexts.add(context);
+    context.once("close", () => this.contexts.delete(context));
+    if (this.patterns.length) await this.installRouteMocks(context);
+  }
+
+  route(target: RouteTarget): ReturnType<Laravel["routeActions"]>;
+  route<P>(target: (params: P) => RouteTarget, params: P): ReturnType<Laravel["routeActions"]>;
+  route(target: () => RouteTarget): ReturnType<Laravel["routeActions"]>;
+  route<P>(target: RouteTarget | ((params?: P) => RouteTarget), params?: P) {
+    return this.routeActions(routePattern(typeof target === "function" ? target(params) : target, this.origin));
+  }
+
+  private routeActions(pattern: ReturnType<typeof routePattern>) {
+    return {
+      respond: async (response: RouteResponse) => {
+        await this.operation("route.mock", { ...pattern, response });
+        this.patterns.push(pattern);
+        await Promise.all([...this.contexts].map((context) => this.installRouteMocks(context)));
+      },
+      fault: (response: Omit<RouteResponse, "abort" | "networkError">) =>
+        this.operation("route.fault", { ...pattern, response }),
+    };
+  }
+
+  private async installRouteMocks(context: BrowserContext) {
+    if (this.routeContexts.has(context)) return;
+    this.routeContexts.add(context);
+    await context.route((url) => url.origin === this.origin && !/^\/_rehearsal(?:\/|$)/.test(url.pathname), async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (!this.patterns.some((pattern) => matchesRoute(pattern, url, request.method()))) return route.fallback();
+      const rule = await claimRoute(this.origin, this.marker, request.method(), url);
+      if (!rule) return route.fallback();
+      const response = await mockResponse(rule);
+      if (rule.abort || rule.networkError) return route.abort(rule.abort ? "aborted" : "failed");
+      return route.fulfill({ ...response, headers: Object.fromEntries(response.headers) });
+    });
   }
 
   async preparePage(page: Page) {

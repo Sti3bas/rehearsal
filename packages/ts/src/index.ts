@@ -72,5 +72,6 @@ export const reverbTest = test.extend({
 
 export { expect } from "@playwright/test";
 export { Laravel, type FactoryDefinition } from "./client.js";
+export type { RouteTarget, RouteResponse } from "./routes.js";
 export { laravelServer } from "./server.js";
 export { injectReverb, type ReverbClientConfig } from "./reverb.js";

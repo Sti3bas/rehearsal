@@ -70,6 +70,17 @@ php artisan vendor:publish --tag=rehearsal-config
 
 ### Fixture API
 
+#### Mock Laravel routes
+
+```ts
+await laravel.route("/api/listings/**").respond({ json: { data: [] }, delay: 100 });
+await laravel.route(listings.show({ listing: slug })).respond({ status: 404, once: true });
+```
+
+Pass a URL at the Laravel origin, a path (with `*` for a segment or `**` across segments), or a Wayfinder object or route function and its parameters. Wayfinder objects also match the HTTP method. Supports JSON, text bodies, headers, status, delays (milliseconds), browser aborts and network errors. If a pattern includes a query string it is matched; otherwise queries are ignored. Newest matching registration wins; `once` is shared between browser and SSR, including across browser contexts bound to the attempt. The Nuxt module uses MSW for fetches using `useRehearsalFetch()` in forwarding mode. Browser routes apply only to Playwright contexts bound to the attempt and HTTP requests to Laravel, not third-party assets.
+
+For traffic that must actually reach Laravel, allowlist paths or glob patterns in `rehearsal.fault_paths`, then use `await laravel.route("/api/listings/**").fault({ status: 503, once: true })`. A delay without a response lets the real route run afterward. Each attempt starts with no rules.
+
 | Call | What it does |
 | --- | --- |
 | `laravel.factory("User", attrs, { states, count })` | Creates a model or a batch. The model and state aliases must be registered in config. Pass an array of definitions to batch several factories into one call. |

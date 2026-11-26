@@ -45,6 +45,8 @@ final readonly class Control
             'travel' => $this->travel($attempt, $data),
             'artisan' => $this->artisan($data),
             'queue.drain' => $this->drain($data),
+            'route.mock' => RouteMocks::register($attempt, $data, false),
+            'route.fault' => RouteMocks::register($attempt, $data, true),
             default => $this->operations->invoke($input['name'], $data),
         };
 
