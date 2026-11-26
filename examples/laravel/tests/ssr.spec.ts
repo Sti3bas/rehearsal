@@ -80,6 +80,18 @@ for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
   });
 }
 
+test("returns a headers-only fault once on the real server", async ({ laravel, page, baseURL }) => {
+  await laravel.route("/probe/redirect").fault({ headers: { "X-Probe-Fault": "once" }, once: true });
+  const first = await page.request.get(baseURL + "/probe/redirect", { maxRedirects: 0 });
+  expect(first.headers()["x-probe-fault"]).toBe("once");
+  expect(first.status()).toBe(200);
+  expect(await first.text()).toBe("");
+
+  const second = await page.request.get(baseURL + "/probe/redirect", { maxRedirects: 0 });
+  expect(second.status()).toBe(302);
+  expect(second.headers()["x-probe-fault"]).toBeUndefined();
+});
+
 test.describe("route mocks on a reused slot", () => {
   test.describe.configure({ mode: "serial" });
   test("stubs a Laravel route", async ({ laravel, page }) => {

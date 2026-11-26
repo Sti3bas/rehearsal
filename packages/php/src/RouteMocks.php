@@ -65,7 +65,7 @@ final class RouteMocks
         if (isset($rule['jsonBody'])) {
             return new JsonResponse($rule['jsonBody'], $rule['status'] ?? 200, $headers, json: true);
         }
-        if (isset($rule['status']) || isset($rule['body'])) {
+        if (isset($rule['status']) || isset($rule['body']) || $headers !== []) {
             return response($rule['body'] ?? '', $rule['status'] ?? 200, $headers);
         }
 
