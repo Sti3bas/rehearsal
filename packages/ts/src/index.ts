@@ -1,5 +1,6 @@
 import { test as base, type APIRequestContext } from "@playwright/test";
 import { Laravel, startAttempt } from "./client.js";
+import { injectReverb } from "./reverb.js";
 import { loopback, managedLaunch, protocol } from "./transport.js";
 
 interface RunConnection {
@@ -49,7 +50,7 @@ export const test = base.extend<{ laravel: Laravel }, WorkerOptions>({
     const { request, origin, capability, slot } = rehearsalRun;
     const attempt = await startAttempt(request, origin, capability, slot);
     await testInfo.attach("rehearsal-reset", { body: JSON.stringify(attempt.resetMs), contentType: "application/json" });
-    await use(new Laravel(origin, request, capability, attempt.marker, baseURL ? new URL(baseURL).origin : origin));
+    await use(new Laravel(origin, request, capability, attempt.marker, baseURL ? new URL(baseURL).origin : origin, attempt.client));
   }, { auto: true }],
   context: async ({ context, laravel }, use) => {
     await laravel.bindContext(context);
@@ -61,6 +62,15 @@ export const test = base.extend<{ laravel: Laravel }, WorkerOptions>({
   },
 });
 
+export const reverbTest = test.extend({
+  context: async ({ context, laravel, baseURL }, use) => {
+    if (!baseURL) throw new Error("The Rehearsal Reverb plugin requires a frontend baseURL.");
+    await injectReverb(context, baseURL, laravel.integrationMetadata("reverb"));
+    await use(context);
+  },
+});
+
 export { expect } from "@playwright/test";
 export { Laravel, type FactoryDefinition } from "./client.js";
 export { laravelServer } from "./server.js";
+export { injectReverb, type ReverbClientConfig } from "./reverb.js";

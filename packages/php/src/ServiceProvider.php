@@ -34,6 +34,7 @@ final class ServiceProvider extends LaravelProvider
             'queue.default' => 'null',
             'mail.default' => 'log',
             'broadcasting.default' => 'log',
+            'scout.driver' => 'null',
             'app.debug' => false,
         ]);
         if (in_array(Database::class, config('rehearsal.integrations'), true)) {
@@ -52,6 +53,9 @@ final class ServiceProvider extends LaravelProvider
 
     public function boot(): void
     {
+        if ($this->app->environment('playwright') && config('rehearsal.reverb.server') === true && $this->app->runningInConsole()) {
+            ReverbApplications::register();
+        }
         $this->publishes([__DIR__.'/../config/rehearsal.php' => config_path('rehearsal.php')], 'rehearsal-config');
         if ($this->app->runningInConsole()) {
             $this->commands([InstallCommand::class]);

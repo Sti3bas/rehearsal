@@ -27,4 +27,7 @@ return [
     ],
     'artisan' => [],
     'login' => null,
+    'mailpit' => ['api' => null, 'smtp_port' => 1025],
+    'scout' => ['engine' => null, 'origin' => null, 'admin_key' => null, 'models' => []],
+    'reverb' => ['origin' => null, 'server' => env('REHEARSAL_REVERB_SERVER', false)],
 ];

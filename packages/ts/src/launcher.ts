@@ -21,6 +21,11 @@ for (const key of ["DB_CONNECTION", "DB_HOST", "DB_PORT", "DB_USERNAME", "DB_PAS
   const value = process.env["REHEARSAL_MANAGED_" + key];
   if (value !== undefined) env[key] = value;
 }
+for (const [key, value] of Object.entries(process.env)) {
+  if (/^REHEARSAL_MANAGED_REHEARSAL_INTEGRATION_[A-Z0-9_]+$/.test(key)) {
+    env[key.slice("REHEARSAL_MANAGED_".length)] = value;
+  }
+}
 Object.assign(env, {
   APP_ENV: "playwright",
   APP_URL: "http://127.0.0.1:" + port,
