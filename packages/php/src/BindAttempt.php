@@ -49,7 +49,7 @@ final readonly class BindAttempt
 
             if (config('rehearsal.fault_paths') && ! $request->is('_rehearsal', '_rehearsal/*')
                 && ($fault = RouteMocks::fault($attempt, $request)) !== null) {
-                return $fault;
+                return $this->app->make(HandleCors::class)->handle($request, static fn () => $fault);
             }
 
             HttpFakes::bind($attempt);

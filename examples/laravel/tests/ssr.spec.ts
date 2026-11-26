@@ -92,6 +92,31 @@ for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
   });
 }
 
+test("applies the app's CORS policy to a real-server fault", async ({ laravel, page, baseURL }) => {
+  const origin = "http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT;
+  await laravel.route({ url: "/login", method: "POST" }).fault({
+    status: 422,
+    json: { message: "Injected validation error" },
+  });
+  await page.goto(origin);
+  const result = await page.evaluate(async (url) => {
+    const response = await fetch(url, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    return { status: response.status, body: await response.json() };
+  }, baseURL + "/login");
+  expect(result).toEqual({ status: 422, body: { message: "Injected validation error" } });
+
+  const denied = await page.request.post(baseURL + "/login", {
+    headers: { Origin: "http://127.0.0.1:1" },
+  });
+  expect(denied.status()).toBe(422);
+  expect(denied.headers()["access-control-allow-origin"]).not.toBe("http://127.0.0.1:1");
+});
+
 test("returns a headers-only fault once on the real server", async ({ laravel, page, baseURL }) => {
   await laravel.route("/probe/redirect").fault({ headers: { "X-Probe-Fault": "once" }, once: true });
   const first = await page.request.get(baseURL + "/probe/redirect", { maxRedirects: 0 });
