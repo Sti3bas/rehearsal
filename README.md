@@ -75,9 +75,48 @@ php artisan vendor:publish --tag=rehearsal-config
 | `laravel.factory("User", attrs, { states, count })` | Creates a model or a batch. The model and state aliases must be registered in config. Pass an array of definitions to batch several factories into one call. |
 | `laravel.login({ id })` | Logs in the current browser context through the configured guard. Opt in with `'login' => ['guard' => 'web']`. |
 | `laravel.travel("2034-01-02T12:00:00.000Z")` | Sets Laravel's test clock and the fixed time on pages managed by the fixture. |
-| `laravel.queue.drain({ queues, maxJobs })` | Runs bounded database queue work. Omit `queues` to use the configured allowlist, which defaults to Laravel's database queue name. Returns pending, removed, and failed counts. |
 | `laravel.artisan("about", {})` | Runs a configured alias, never an arbitrary Artisan command. |
 | `laravel.operation("reports.stage", input)` | Calls a named, validated application operation. |
+
+#### Mock Laravel routes
+
+```ts
+await laravel.route("/api/listings/**").respond({ json: { data: [] }, delay: 100 });
+await laravel.route(listings.show({ listing: slug })).respond({ status: 404, once: true });
+```
+
+Pass a URL at the Laravel origin, a path (with `*` for a segment or `**` across segments), or a Wayfinder object or route function and its parameters. Wayfinder objects also match the HTTP method. Supports JSON, text bodies, headers, status, delays (milliseconds), browser aborts and network errors. If a pattern includes a query string it is matched; otherwise queries are ignored. Newest matching registration wins; `once` is shared between browser and SSR, including across browser contexts bound to the attempt. The Nuxt module uses MSW for fetches using `useRehearsalFetch()` in forwarding mode. Browser routes apply only to Playwright contexts bound to the attempt and HTTP requests to Laravel, not third-party assets.
+
+For traffic that must actually reach Laravel, allowlist paths or glob patterns in `rehearsal.fault_paths`, then use `await laravel.route("/api/listings/**").fault({ status: 503, once: true })`. A delay without a response lets the real route run afterward. Each attempt starts with no rules.
+
+#### Fake outbound Laravel HTTP
+
+```ts
+await laravel.http.fake({
+  "https://api.openai.com/v1/moderations*": {
+    json: { results: [{ flagged: false, categories: {} }] },
+  },
+});
+```
+
+Rules are data only and apply to Laravel's HTTP client, not to a browser fetch or SDKs that use their own transport. A rule can specify `status`, `json` or `body`, headers, or `networkError`. To match a method or return a sequence, use `{ method: "POST", responses: [...] }`; the final response repeats. Calling `fake()` with a new map replaces the attempt's rules. Unmatched requests are blocked by default; allow them explicitly with `{ preventStrayRequests: false }` only when intentional.
+
+#### Run queued and scheduled work
+
+`laravel.queue.drain({ queues, maxJobs })` runs bounded database queue work and returns processed, pending, removed, and failed counts and failed job details. Omit `queues` to use the configured allowlist, which defaults to Laravel's database queue name.
+
+Use `laravel.queue.failed()` to inspect failed jobs for the attempt. For work dispatched after a request returns, use `drainUntil` with an assertion rather than waiting for the pending count to reach zero:
+
+```ts
+await laravel.queue.drainUntil(async () => {
+  expect(await laravel.operation("reports.status")).toBe("complete");
+}, { queues: ["reports"], timeout: 10_000 });
+await laravel.schedule.run(["expire-listings"], { drain: { queues: ["default"] } });
+```
+
+In `config/rehearsal.php`, register scheduled commands as
+`'schedule' => ['expire-listings' => ['command' => 'listings:expire']]`.
+An entry may include trusted `fixed` Artisan arguments. The helper runs only the named tasks once, in the attempt's app and clock; it does not evaluate cron timing or start a scheduler daemon. Omit `drain` to leave queued work pending.
 
 ### How isolation works
 
@@ -95,7 +134,7 @@ The lifecycle is **provision → reset → bind requests → cleanup**. Rehearsa
 | Filesystem | Local and public disks are isolated by default. Set `disks` to select others. Use the disk's generated `url()` or `temporaryUrl()`, not hardcoded `/storage/…` links. |
 | Cache, session, queue | Uses the slot database. Keeps the configured database queue and table names. |
 | Clock | Per-attempt Laravel clock and Playwright page clock through `laravel.travel()`. |
-| Mail / Mailpit | Mail logs by default. Opt in to Mailpit to inspect attempt-tagged inboxes via `Mailpit::messages($attempt)` in a named operation. |
+| Mail / Mailpit | Mail logs by default. Opt in to Mailpit to inspect attempt-tagged inboxes with `laravel.mailbox(recipient)`. |
 | Scout | Database search uses the slot DB. Meilisearch and Typesense use a scoped key and per-slot index names; reset clears documents without rebuilding the indexes. |
 | Reverb | Each attempt has its own Reverb application, so workers can reuse channel names. Only the public browser config is injected. |
 
@@ -141,6 +180,27 @@ Add entries to the **existing** `integrations` array in the published config, ke
 - **Scout:** Custom search/index names must honor `scout.prefix`. For remote engines, list the searchable models and configure their index/collection schema as you normally would. Remote indexes start empty; index baseline records in a named operation if a test needs them. The database engine needs no search container or admin key.
 - **Mailpit:** The integration configures the default test mailer. Explicit app-specific mailers should never point at live SMTP during a test.
 - **Reverb:** Run a separate daemon from the same checkout with `APP_ENV=playwright REHEARSAL_REVERB_SERVER=true php artisan reverb:start --host=127.0.0.1 --port=18080`. Import `reverbTest as test` in browser specs and configure your Echo client with the `key`, `host`, and `port` from `globalThis.__REHEARSAL_REVERB__` before it starts. The publisher secret stays server-side.
+
+After loading your frontend, wait for Echo to join and then publish on the attempt's real Reverb application:
+
+```ts
+await reverb.waitForSubscriber("private-listings.3");
+await reverb.broadcast("private-listings.3", "ListingUpdated", { id: 3 });
+await expect(page.getByText("Listing updated")).toBeVisible();
+```
+
+Both helpers use the exact wire channel and event names. Use `await reverb.subscribed(channel)` for a non-polling occupancy check. Assert frontend behavior to verify delivery; the publisher can only report whether Reverb accepted the event.
+
+Read rendered mail from the current attempt without replacing the application's mailer with an assertion fake:
+
+```ts
+const inbox = laravel.mailbox("buyer@example.test");
+await inbox.expectReceived(/verify/i);
+const verifyURL = await inbox.link("Verify address", { subject: /verify/i });
+await page.goto(verifyURL);
+```
+
+`inbox.latest({ subject })` waits for a matching message and returns its HTML and text. `inbox.all()` lists the recent summaries without waiting.
 
 See [the working example config](examples/laravel/config/rehearsal.php) and [disposable services](examples/laravel/compose.integrations.yml).
 

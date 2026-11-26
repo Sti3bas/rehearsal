@@ -4,11 +4,12 @@ import { expect, reverbTest as test, type ReverbClientConfig } from "@sti3bas/re
 
 declare global {
   var __REHEARSAL_REVERB__: ReverbClientConfig;
-  var rehearsalEvents: string[];
+  var rehearsalEvents: unknown[];
 }
 
 for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
-  test("isolates identical Reverb channels for " + name, async ({ laravel, page }, info) => {
+  test("isolates identical Reverb channels for " + name, async ({ reverb, page }, info) => {
+    expect(await reverb.subscribed("probe")).toBe(false);
     await page.goto("/");
     await page.evaluate(() => new Promise<void>((ready, fail) => {
       const { host, port, key, scheme } = globalThis.__REHEARSAL_REVERB__;
@@ -22,7 +23,7 @@ for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
         } else if (message.event === "pusher_internal:subscription_succeeded") {
           ready();
         } else if (message.event === "ping") {
-          globalThis.rehearsalEvents.push(JSON.parse(message.data).value);
+          globalThis.rehearsalEvents.push(JSON.parse(message.data));
         } else if (message.event === "pusher:error") {
           fail(new Error("Reverb refused the subscription"));
         }
@@ -32,9 +33,11 @@ for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
     await mkdir(barrier, { recursive: true });
     await writeFile(resolve(barrier, "open-" + info.parallelIndex), name);
     await expect.poll(async () => (await readdir(barrier)).filter((file) => file.startsWith("open-")).length).toBe(4);
-    await laravel.operation("probe.broadcast", { value: name });
+    await reverb.waitForSubscriber("probe");
+    const payload = { value: name, empty: {}, numeric: { 0: name }, list: [name] };
+    await reverb.broadcast("probe", "ping", payload);
     await writeFile(resolve(barrier, "sent-" + info.parallelIndex), name);
     await expect.poll(async () => (await readdir(barrier)).filter((file) => file.startsWith("sent-")).length).toBe(4);
-    await expect.poll(() => page.evaluate(() => globalThis.rehearsalEvents)).toEqual([name]);
+    await expect.poll(() => page.evaluate(() => globalThis.rehearsalEvents)).toEqual([payload]);
   });
 }

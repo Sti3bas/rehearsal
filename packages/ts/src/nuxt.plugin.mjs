@@ -9,5 +9,5 @@ export default defineNuxtPlugin(() => {
   for (const [name, value] of Object.entries(useRequestHeaders(["cookie", "x-rehearsal-attempt"]))) {
     if (typeof value === "string") headers.set(name, value);
   }
-  return { provide: { rehearsalFetch: createNuxtRehearsalFetch(laravelOrigin, headers) } };
+    return { provide: { rehearsalFetch: createNuxtRehearsalFetch(laravelOrigin, headers, true) } };
 });

@@ -3,12 +3,23 @@
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 
 Route::get('/', fn () => response('Rehearsal'));
 Route::get('/probe/redirect', fn () => redirect('/state'));
 Route::get('/probe/outside-db', fn () => ['configured' => config('database.connections.outside') !== null]);
+Route::get('/probe/moderation', function () {
+    Http::preventStrayRequests();
+    try {
+        $response = Http::post('https://api.openai.com/v1/moderations', ['input' => 'Synthetic example']);
+    } catch (\Illuminate\Http\Client\ConnectionException|\Illuminate\Http\Client\StrayRequestException) {
+        return response()->json(['unavailable' => true], 503);
+    }
+
+    return response($response->body(), $response->status(), ['Content-Type' => $response->header('Content-Type')]);
+});
 Route::get('/probe/public-file', function () {
     $public = Storage::disk('public');
     $public->put('probe.txt', 'public probe');

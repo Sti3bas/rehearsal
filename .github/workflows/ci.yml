@@ -119,6 +119,7 @@ jobs:
       - if: matrix.scout == 'database'
         run: npm run e2e -- ssr.spec.ts
         env:
+          REHEARSAL_E2E_PORT: '8101'
           REHEARSAL_E2E_NUXT_PORT: '8325'
           REHEARSAL_E2E_WORKERS: '4'
       - if: always()
