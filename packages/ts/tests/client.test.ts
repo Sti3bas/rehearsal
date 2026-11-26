@@ -2,7 +2,9 @@ import type { APIRequestContext } from "@playwright/test";
 import { describe, expect, it, vi } from "vitest";
 import { Laravel, startAttempt } from "../src/client.js";
 import { routePattern } from "../src/routes.js";
+import { laravelServer } from "../src/server.js";
 import { loopback } from "../src/transport.js";
+import { typesenseInstantSearch } from "../src/typesense.js";
 
 describe("client", () => {
   it("starts a slot with a capability, then batches factory items once in order", async () => {
@@ -29,6 +31,12 @@ describe("client", () => {
     expect(loopback(new URL("http://localhost.evil.example:8100"))).toBe(false);
   });
 
+  it("advertises localhost for managed Sanctum setups", () => {
+    const server = laravelServer({ server: "frankenphp", host: "localhost", port: 8010 });
+    expect(server.url).toBe("http://localhost:8010/_rehearsal/ready");
+    expect(server.command).toMatch(/'frankenphp' 'localhost'$/);
+  });
+
   it("uses Typesense metadata under a custom integration name", () => {
     const origin = "http://127.0.0.1:8100";
     const config = { origin: "http://127.0.0.1:8108", collectionPrefix: "worker_", searchKey: "search-only" };
@@ -36,6 +44,29 @@ describe("client", () => {
       search: { engine: "typesense", ...config },
     });
     expect(client.typesense()).toEqual(config);
+  });
+
+  it("preserves normal InstantSearch settings without an attempt and scopes all collection settings with one", () => {
+    const options = {
+      server: { apiKey: "normal", nodes: [{ host: "example.test" }], nearestNode: {}, cacheSearchResultsForSeconds: 10 },
+      collectionSpecificSearchParameters: { users: { query_by: "name" } },
+      collectionSpecificFacetByOptions: { users: { name: "sort_by:alpha:asc" } },
+    };
+    const ordinary = typesenseInstantSearch();
+    expect(ordinary.configure(options)).toBe(options);
+    expect(ordinary.indexName("users/sort/name:asc")).toBe("users/sort/name:asc");
+    const isolated = typesenseInstantSearch({
+      origin: "http://[::1]:18108", collectionPrefix: "slot_", searchKey: "search",
+    });
+    expect(isolated.indexName("users/sort/name:asc")).toBe("slot_users/sort/name:asc");
+    expect(isolated.configure(options)).toEqual({
+      server: {
+        apiKey: "search", nodes: [{ host: "[::1]", port: 18108, protocol: "http" }], nearestNode: undefined,
+        cacheSearchResultsForSeconds: 10,
+      },
+      collectionSpecificSearchParameters: { slot_users: { query_by: "name" } },
+      collectionSpecificFacetByOptions: { slot_users: { name: "sort_by:alpha:asc" } },
+    });
   });
 
   it("uses the root path for the configured Laravel origin", () => {

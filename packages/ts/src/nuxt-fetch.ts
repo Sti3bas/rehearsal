@@ -1,19 +1,8 @@
 import { createFetch } from "ofetch";
-import { http, HttpResponse } from "msw";
-import { setupServer } from "msw/node";
+import { HttpResponse } from "msw";
 import { claimRoute, mockResponse } from "./routes.js";
 import { attemptMarker, rehearsalSsrFetch } from "./ssr.js";
 import { capabilityHeader, loopback, markerCookie } from "./transport.js";
-
-let server: ReturnType<typeof setupServer> | undefined;
-
-function intercept() {
-  if (!server) {
-    server = setupServer();
-    server.listen({ onUnhandledFrame: "bypass" });
-  }
-  return server;
-}
 
 export function createNuxtRehearsalFetch(laravelOrigin: string, requestHeaders: Headers, mocks = false,
   cookies?: { names: string[]; frontendOrigin: string },
@@ -53,14 +42,12 @@ export function createNuxtRehearsalFetch(laravelOrigin: string, requestHeaders: 
       const rule = await claimRoute(origin, marker, method, target);
       if (!rule) return forward();
 
-      const msw = intercept();
-      return msw.boundary(async () => {
-        msw.use(http.all(({ request }) => request.method === method && request.url === target.href, async () => {
-          const { body, ...response } = await mockResponse(rule);
-          return rule.abort || rule.networkError ? HttpResponse.error() : new HttpResponse(body, response);
-        }));
-        return forward();
-      })();
+      const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
+      signal?.throwIfAborted();
+      const { body, ...response } = await mockResponse(rule);
+      signal?.throwIfAborted();
+      if (rule.abort || rule.networkError) throw new TypeError("fetch failed");
+      return new HttpResponse(body, response);
     },
   });
 }

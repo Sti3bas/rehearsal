@@ -1,13 +1,15 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
+import { constants } from "node:fs";
 import { access, mkdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { privateLaunchPath } from "./transport.js";
 
 const root = process.cwd();
 const port = Number(process.argv[2]);
 const workers = Number(process.argv[3]);
+const host = process.argv[5] ?? "127.0.0.1";
 const run = randomBytes(12).toString("hex");
 const capability = randomBytes(32).toString("hex");
 const launchPath = privateLaunchPath(root, port);
@@ -28,7 +30,7 @@ for (const [key, value] of Object.entries(process.env)) {
 }
 Object.assign(env, {
   APP_ENV: "playwright",
-  APP_URL: "http://127.0.0.1:" + port,
+  APP_URL: "http://" + host + ":" + port,
   APP_DEBUG: "false",
   APP_CONFIG_CACHE: join(runPath, "config.php"),
   APP_ROUTES_CACHE: join(runPath, "routes.php"),
@@ -50,13 +52,34 @@ function stop() {
 process.on("SIGTERM", stop);
 process.on("SIGINT", stop);
 
-async function artisan(args: string[]) {
-  child = spawn("php", ["artisan", ...args, "--env=playwright", "--no-interaction"], {
+async function execute(command: string, args: string[]) {
+  child = spawn(command, args, {
     cwd: root, env, stdio: "inherit", detached: true,
   });
-  const [code] = await once(child, "exit");
-  child = undefined;
-  return code ?? 1;
+  try {
+    const [code] = await once(child, "exit");
+    return code ?? 1;
+  } finally {
+    child = undefined;
+  }
+}
+
+function artisan(args: string[]) {
+  return execute("php", ["artisan", ...args, "--env=playwright", "--no-interaction"]);
+}
+
+const server = process.argv[4] ?? "artisan";
+let frankenphp: string | undefined;
+if (server !== "artisan") {
+  if (server !== "frankenphp" && server !== "auto") throw new Error("Invalid Rehearsal server.");
+  for (const directory of (env.PATH ?? "").split(delimiter)) {
+    const candidate = resolve(directory, "frankenphp");
+    if (await access(candidate, constants.X_OK).then(() => true, () => false)) {
+      frankenphp = candidate;
+      break;
+    }
+  }
+  if (!frankenphp && server === "frankenphp") throw new Error("FrankenPHP was not found on PATH.");
 }
 
 await access(join(root, ".env.playwright")).catch(() => {
@@ -68,7 +91,9 @@ let cleanup = true;
 try {
   if (await artisan(["rehearsal:provision"])) throw new Error("Rehearsal provisioning failed.");
   if (!stopping) {
-    const code = await artisan(["serve", "--host=127.0.0.1", "--port=" + port, "--no-reload", "--tries=1"]);
+    const code = frankenphp
+      ? await execute(frankenphp, ["php-server", "--listen=127.0.0.1:" + port, "--root=public"])
+      : await artisan(["serve", "--host=127.0.0.1", "--port=" + port, "--no-reload", "--tries=1"]);
     if (!stopping && code) throw new Error("Rehearsal's Laravel server exited.");
   }
 } finally {

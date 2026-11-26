@@ -35,6 +35,15 @@ final readonly class Control
         return response()->json($this->protocol->begin((int) $data['slot']));
     }
 
+    public function typesense(Attempt $attempt): JsonResponse
+    {
+        abort_unless(in_array(Scout::class, config('rehearsal.integrations'), true), 404);
+        $metadata = app(Scout::class)->clientMetadata($attempt);
+        abort_if($metadata === [], 404);
+
+        return response()->json($metadata, headers: ['Cache-Control' => 'private, no-store']);
+    }
+
     public function call(Request $request, Attempt $attempt): JsonResponse
     {
         $this->protocol->authorize($request);
