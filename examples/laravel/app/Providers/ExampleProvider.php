@@ -5,9 +5,11 @@ namespace App\Providers;
 use App\Jobs\WriteProbe;
 use App\Models\Category;
 use App\Models\User;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\ServiceProvider;
 use Sti3bas\Rehearsal\Operations;
@@ -19,6 +21,8 @@ final class ExampleProvider extends ServiceProvider
         if (! $this->app->environment('playwright')) {
             return;
         }
+
+        RateLimiter::for('probe', static fn () => Limit::perMinute(2)->by('shared-probe'));
 
         $this->app->make(Operations::class)->register('probe.write', [
             'value' => 'required|string|max:100',

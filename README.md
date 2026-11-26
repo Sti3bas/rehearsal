@@ -48,6 +48,8 @@ The PHP package allows only the `testing` environment by default. Set `rehearsal
 
 To keep an app's existing config value instead of applying a Rehearsal default, set that dotted key to `null` in `rehearsal.safe_defaults`, for example `'safe_defaults' => ['cache.default' => null]`. Supported keys are `session.driver`, `cache.default`, `queue.default`, `mail.default`, `broadcasting.default`, `scout.driver`, and `app.debug`. Integrations still take ownership of their drivers when they bind an attempt: for example, set `'laravel-state' => false` in `rehearsal.integrations` if the app supplies its own session, cache, and queue isolation, or register a custom integration instead. Opt out only with disposable services or independently isolated state.
 
+The Laravel state integration stores rate-limit counters in the attempt database, including when an app registers named limiters at boot. An explicit `cache.limiter` store is left unchanged; isolate that store separately if needed.
+
 **`playwright.config.ts`**
 
 ```ts
