@@ -1,0 +1,75 @@
+name: Rehearsal
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: pdo_sqlite
+          coverage: none
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - run: composer install --working-dir=packages/php --no-interaction --prefer-dist
+      - run: composer --working-dir=packages/php test
+      - run: npm ci
+      - run: npm run build && npm test
+
+  browser:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [sqlite, mysql, pgsql]
+        workers: [1, 4]
+    services:
+      mysql:
+        image: mirror.gcr.io/library/mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: rehearsal_local
+          MYSQL_ROOT_HOST: '%'
+        ports:
+          - 13386:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=5s --health-timeout=5s --health-retries=15
+      postgres:
+        image: mirror.gcr.io/library/postgres:17
+        env:
+          POSTGRES_PASSWORD: rehearsal_local
+        ports:
+          - 15438:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, pdo_mysql, pdo_pgsql
+          coverage: none
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - run: composer install --working-dir=examples/laravel --no-interaction --prefer-dist
+      - run: php artisan rehearsal:install
+        working-directory: examples/laravel
+      - run: npm ci && npm run build
+      - run: npx playwright install chromium --only-shell --with-deps
+      - run: npm run e2e -- --reporter=line
+        env:
+          REHEARSAL_E2E_ENGINE: ${{ matrix.engine }}
+          REHEARSAL_E2E_WORKERS: ${{ matrix.workers }}
