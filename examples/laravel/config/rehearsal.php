@@ -48,6 +48,6 @@ return [
         'probe' => ['command' => 'probe:schedule'],
         'fail-probe' => ['command' => 'probe:schedule', 'fixed' => ['--fail' => true]],
     ],
-    'fault_paths' => ['/probe/redirect'],
+    'fault_paths' => ['/probe/redirect', '/login'],
     'route_mocks' => true,
 ];
