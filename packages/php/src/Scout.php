@@ -140,6 +140,9 @@ final class Scout implements Integration
     private function configure(string $engine, Attempt $attempt): void
     {
         config(['scout.driver' => $engine, 'scout.queue' => false, 'scout.prefix' => $this->prefix($attempt)]);
+        if ($engine !== 'database') {
+            config(['scout.after_commit' => true]);
+        }
     }
 
     private function api(): PendingRequest

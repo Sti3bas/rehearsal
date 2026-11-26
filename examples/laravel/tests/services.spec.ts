@@ -32,3 +32,13 @@ test.describe("slot reuse", () => {
     expect(await laravel.operation("probe.inbox")).toEqual([]);
   });
 });
+
+test("does not index rolled-back factory rows", async ({ laravel }) => {
+  test.skip(process.env.REHEARSAL_E2E_SCOUT === "database", "Database search has no remote documents.");
+  await expect(laravel.factory([
+    { model: "User", attrs: { name: "Probe rolled back", email: "duplicate@example.test" } },
+    { model: "User", attrs: { name: "Probe duplicate", email: "duplicate@example.test" } },
+  ])).rejects.toThrow("HTTP 500");
+  await laravel.factory("User", { id: 1024, name: "Probe committed", email: "committed@example.test" });
+  await expect.poll(() => laravel.operation("probe.search")).toEqual(["Probe committed"]);
+});
