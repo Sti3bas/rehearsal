@@ -21,15 +21,17 @@ for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
       const credentials = "include" as const;
       const csrf = await fetch(api + "/sanctum/csrf-cookie", { credentials });
       const token = decodeURIComponent(document.cookie.split("; ").find((cookie) => cookie.startsWith("XSRF-TOKEN="))!.slice(11));
-      const session = await fetch(api + "/login", {
+      const login = (email: string, password: string) => fetch(api + "/login", {
         method: "POST", credentials,
         headers: { "Content-Type": "application/json", "X-XSRF-TOKEN": token, Accept: "application/json" },
         body: JSON.stringify({ email, password }),
       });
+      const rejected = await login("baseline@example.test", "wrong-password");
+      const session = await login(email, password);
       const user = await fetch(api + "/api/user", { credentials, headers: { Accept: "application/json" } });
-      return { csrf: csrf.status, login: session.status, user: await user.json() };
+      return { csrf: csrf.status, rejected: rejected.status, login: session.status, user: await user.json() };
     }, { api: baseURL!, email, password });
-    expect(auth).toEqual({ csrf: 204, login: 204, user: { name } });
+    expect(auth).toEqual({ csrf: 204, rejected: 401, login: 204, user: { name } });
     const response = await page.goto(nuxt + "/?authenticated=1");
     expect(await response?.text()).toContain('data-testid="authenticated-user">' + name);
     await expect(page.getByTestId("authenticated-user")).toHaveText(name);

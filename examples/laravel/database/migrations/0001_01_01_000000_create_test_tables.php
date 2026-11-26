@@ -3,7 +3,9 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 return new class extends Migration
 {
@@ -59,6 +61,6 @@ return new class extends Migration
             $table->longText('exception');
             $table->timestamp('failed_at')->useCurrent();
         });
-        DB::table('users')->insert(['name' => 'Baseline', 'email' => 'baseline@example.test', 'password' => 'unused']);
+        DB::table('users')->insert(['name' => 'Baseline', 'email' => 'baseline@example.test', 'password' => Hash::make(Str::random(40))]);
     }
 };
