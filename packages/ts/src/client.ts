@@ -26,7 +26,12 @@ export class Laravel {
     private capability: string,
     private marker: string,
     private frontendOrigin = origin,
+    private metadata: Record<string, unknown> = {},
   ) {}
+
+  integrationMetadata(name: string): unknown {
+    return Object.hasOwn(this.metadata, name) ? this.metadata[name] : undefined;
+  }
 
   async bindContext(context: BrowserContext) {
     const origins = [new URL(this.origin), new URL(this.frontendOrigin)];
@@ -98,5 +103,5 @@ export async function startAttempt(request: APIRequestContext, origin: string, c
     maxRedirects: 0,
   });
   if (!response.ok()) throw new Error("Rehearsal could not reset slot " + slot + " (HTTP " + response.status() + ").");
-  return (await response.json()) as { marker: string; resetMs: Record<string, number> };
+  return (await response.json()) as { marker: string; resetMs: Record<string, number>; client?: Record<string, unknown> };
 }

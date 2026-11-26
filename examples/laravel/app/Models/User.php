@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Laravel\Scout\Searchable;
 
 final class User extends Authenticatable
 {
-    use HasFactory;
+    use HasFactory, Searchable;
 
     protected $fillable = ['name', 'email'];
 
@@ -16,5 +17,15 @@ final class User extends Authenticatable
     public function getConnectionName()
     {
         return parent::getConnectionName() ?? 'members';
+    }
+
+    public function toSearchableArray(): array
+    {
+        return ['id' => (string) $this->id, 'name' => $this->name];
+    }
+
+    public function typesenseCollectionSchema(): array
+    {
+        return ['fields' => [['name' => 'name', 'type' => 'string']]];
     }
 }

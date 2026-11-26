@@ -46,16 +46,20 @@ final readonly class Protocol
         return $this->run->lock('slot-'.$slot, LOCK_EX, function () use ($attempt): array {
             $this->write('slot-'.$attempt->slot.'.attempt', '');
             $timings = [];
+            $client = [];
             foreach ($this->integrations->all() as $name => $integration) {
                 $start = hrtime(true);
                 $integration->reset($attempt);
                 $timings[$name] = round((hrtime(true) - $start) / 1e6, 2);
+                if ($integration instanceof ClientMetadata) {
+                    $client[$name] = $integration->clientMetadata($attempt);
+                }
             }
 
             $this->write('slot-'.$attempt->slot.'.attempt', $attempt->id);
             $payload = implode('.', [$this->run->id, $attempt->slot, $attempt->id, time() + 7200]);
 
-            return ['marker' => $payload.'.'.$this->sign($payload), 'resetMs' => $timings];
+            return ['marker' => $payload.'.'.$this->sign($payload), 'resetMs' => $timings, 'client' => $client];
         });
     }
 

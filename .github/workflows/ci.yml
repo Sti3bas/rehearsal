@@ -69,7 +69,54 @@ jobs:
         working-directory: examples/laravel
       - run: npm ci && npm run build
       - run: npx playwright install chromium --only-shell --with-deps
-      - run: npm run e2e -- --reporter=line
+      - run: npm run e2e
         env:
           REHEARSAL_E2E_ENGINE: ${{ matrix.engine }}
           REHEARSAL_E2E_WORKERS: ${{ matrix.workers }}
+
+  integrations:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        scout: [database, meilisearch, typesense]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, curl
+          coverage: none
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - run: composer install --working-dir=examples/laravel --no-interaction --prefer-dist
+      - run: php artisan rehearsal:install
+        working-directory: examples/laravel
+      - run: npm ci && npm run build
+      - run: npx playwright install chromium --only-shell --with-deps
+      - name: Start disposable services
+        run: |
+          export REHEARSAL_UID="$(id -u)" REHEARSAL_GID="$(id -g)"
+          REVERB_SCALING_ENABLED=true docker compose -f examples/laravel/compose.integrations.yml up --build --detach
+          curl --retry 15 --retry-delay 1 --retry-all-errors --max-time 3 -fsS http://127.0.0.1:18025/api/v1/messages >/dev/null
+          curl --retry 15 --retry-delay 1 --retry-all-errors --max-time 3 -fsS http://127.0.0.1:18108/health >/dev/null
+          curl --retry 15 --retry-delay 1 --retry-all-errors --max-time 3 -fsS http://127.0.0.1:17700/health >/dev/null
+          curl --retry 15 --retry-delay 1 --retry-all-errors --max-time 3 -sS http://127.0.0.1:18080 >/dev/null
+      - run: npm run e2e -- services.spec.ts
+        env:
+          REHEARSAL_E2E_SCOUT: ${{ matrix.scout }}
+          REHEARSAL_E2E_WORKERS: '4'
+      - if: matrix.scout == 'database'
+        run: npm run e2e -- reverb.spec.ts
+        env:
+          REHEARSAL_E2E_REVERB: 'true'
+          REHEARSAL_E2E_WORKERS: '4'
+      - if: matrix.scout == 'database'
+        run: npm run e2e -- ssr.spec.ts
+        env:
+          REHEARSAL_E2E_NUXT_PORT: '8325'
+          REHEARSAL_E2E_WORKERS: '4'
+      - if: always()
+        run: docker compose -f examples/laravel/compose.integrations.yml down
