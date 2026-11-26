@@ -29,6 +29,7 @@ return [
     'schedule' => [],
     'fault_paths' => [],
     'route_mocks' => true,
+    'callbacks' => [],
     'login' => null,
     'mailpit' => ['api' => null, 'smtp_port' => 1025],
     'scout' => ['engine' => null, 'origin' => null, 'admin_key' => null, 'models' => [], 'baseline_models' => []],

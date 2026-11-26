@@ -1,14 +1,78 @@
 <?php
 
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Orchestra\Testbench\TestCase;
 use Sti3bas\Rehearsal\Attempt;
+use Sti3bas\Rehearsal\CallbackReference;
+use Sti3bas\Rehearsal\Callbacks;
 use Sti3bas\Rehearsal\Protocol;
 use Sti3bas\Rehearsal\Run;
 use Sti3bas\Rehearsal\ServiceProvider;
 
 uses(TestCase::class);
+
+it('binds verified loopback callbacks only to a current attempt', function () {
+    $run = new Run(bin2hex(random_bytes(12)));
+    $capability = bin2hex(random_bytes(32));
+    $resolver = new class implements CallbackReference
+    {
+        public function verifiedReference(Request $request): ?string
+        {
+            abort_unless(hash_equals(hash_hmac('sha256', $request->getContent(), 'test-signing-key'), $request->header('X-Test-Signature', '')), 403);
+
+            return $request->input('reference');
+        }
+    };
+    $this->app->instance($resolver::class, $resolver);
+    config(['rehearsal' => [
+        'enabled' => true,
+        'run' => $run->id,
+        'capability' => $capability,
+        'integrations' => [],
+        'callbacks' => ['/event' => $resolver::class],
+    ]]);
+    $this->app->register(ServiceProvider::class);
+    $protocol = $this->app->make(Protocol::class);
+    $protocol->provision();
+    Route::post('/event', fn (Attempt $attempt) => ['slot' => $attempt->slot]);
+    Route::post('/other', fn () => ['ok' => true]);
+    Route::post('/associate', function (Request $request, Callbacks $callbacks) {
+        $callbacks->bind('/event', $request->input('reference'));
+
+        return response()->noContent();
+    });
+    $callback = function (string $reference, array $headers = []) {
+        $data = ['reference' => $reference];
+
+        return $this->postJson('/event', $data, $headers + [
+            'X-Test-Signature' => hash_hmac('sha256', json_encode($data), 'test-signing-key'),
+        ]);
+    };
+
+    try {
+        $markers = [];
+        foreach (range(1, 4) as $slot) {
+            $markers[$slot] = $protocol->begin($slot)['marker'];
+            $this->postJson('/associate', ['reference' => 'payment-'.$slot], [Protocol::MARKER => $markers[$slot]])->assertNoContent();
+        }
+
+        foreach (range(1, 4) as $slot) {
+            $callback('payment-'.$slot, [Protocol::MARKER => $markers[($slot % 4) + 1]])->assertOk()->assertJson(['slot' => $slot]);
+        }
+        $callback('unknown')->assertNoContent();
+        $callback('payment-1', ['X-Test-Signature' => 'invalid', Protocol::MARKER => $markers[1]])->assertForbidden();
+        $this->postJson('/other', ['reference' => 'payment-1'])->assertForbidden();
+        $protocol->begin(1);
+        $callback('payment-1')->assertStatus(409);
+        $callback('payment-2')->assertOk()->assertJson(['slot' => 2]);
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.1']);
+        $callback('payment-2')->assertForbidden();
+    } finally {
+        (new Filesystem)->deleteDirectory($run->path());
+    }
+});
 
 it('keeps control routes disabled by default', function () {
     $this->app->register(ServiceProvider::class);

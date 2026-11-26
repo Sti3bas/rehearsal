@@ -105,6 +105,23 @@ For traffic that must actually reach Laravel, allowlist paths in `rehearsal.faul
 
 Set `rehearsal.route_mocks` to `false` to disable browser and SSR response mocks and their resolution route. Real-server faults have a separate allowlist. The browser login route is only installed when login is configured, and the Typesense credential route is only installed when the Scout integration is configured for Typesense.
 
+#### Route verified callbacks
+
+External providers cannot send the browser's attempt marker. For a provider that
+forwards webhooks to the local test server, opt in with
+`'callbacks' => ['/provider/callback' => ProviderCallbackReference::class]`.
+Implement `CallbackReference::verifiedReference(Request $request): ?string` in
+the app. Verify the provider signature against the raw body before returning a
+stable external reference, such as a provider customer ID. Do not derive the
+attempt from an unsigned request field or a worker number.
+
+When a marked app request creates that external resource, associate it with
+`app(Callbacks::class)->bind('/provider/callback', $reference)`. Rehearsal saves a
+signed binding scoped to the exact path, the run, and the current attempt.
+Only loopback POSTs on the configured path are eligible. Valid callbacks without
+a registered reference return 204, and a binding to a replaced attempt is
+rejected. The app still owns its webhook route and provider-specific behavior.
+
 #### Fake outbound Laravel HTTP
 
 ```ts
