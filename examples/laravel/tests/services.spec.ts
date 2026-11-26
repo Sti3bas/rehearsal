@@ -5,14 +5,15 @@ import { expect, test } from "@sti3bas/rehearsal";
 test("sends mail over IPv6 loopback", async ({ laravel }) => {
   test.skip(process.env.REHEARSAL_E2E_SERVICE_HOST !== "[::1]", "IPv6-specific SMTP regression.");
   await laravel.operation("probe.mail", { title: "IPv6 SMTP" });
-  await expect.poll(() => laravel.operation("probe.inbox")).toEqual(["IPv6 SMTP"]);
+  await laravel.mailbox("receiver@example.test").expectReceived("IPv6 SMTP");
 });
 
 for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
   test("isolates Scout and Mailpit for " + name, async ({ laravel }, info) => {
     const title = "Probe " + name;
+    const inbox = laravel.mailbox("receiver@example.test");
     expect(await laravel.operation("probe.search")).toEqual([]);
-    expect(await laravel.operation("probe.inbox")).toEqual([]);
+    expect(await inbox.all()).toEqual([]);
     await laravel.factory("User", { name: title, email: "probe@example.test" });
     await laravel.operation("probe.mail", { title });
     const barrier = resolve(info.project.outputDir, "service-barrier");
@@ -20,7 +21,10 @@ for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
     await writeFile(resolve(barrier, String(info.parallelIndex)), title);
     await expect.poll(async () => (await readdir(barrier)).length).toBe(4);
     await expect.poll(() => laravel.operation("probe.search")).toEqual([title]);
-    await expect.poll(() => laravel.operation("probe.inbox")).toEqual([title]);
+    await inbox.expectReceived(title);
+    expect(await inbox.all()).toEqual([{ id: expect.any(String), subject: title }]);
+    expect(await inbox.link(/verify address/i, { subject: /^Probe / })).toBe("https://example.test/verify?a=1&b=2");
+    expect(await laravel.mailbox("other@example.test").all()).toEqual([]);
   });
 }
 
@@ -30,12 +34,12 @@ test.describe("slot reuse", () => {
     await laravel.factory("User", { name: "Probe stale" });
     await laravel.operation("probe.mail", { title: "Probe stale" });
     await expect.poll(() => laravel.operation("probe.search")).toEqual(["Probe stale"]);
-    await expect.poll(() => laravel.operation("probe.inbox")).toEqual(["Probe stale"]);
+    await laravel.mailbox("receiver@example.test").expectReceived("Probe stale");
   });
 
   test("empties search and mail between attempts", async ({ laravel }) => {
     expect(await laravel.operation("probe.search")).toEqual([]);
-    expect(await laravel.operation("probe.inbox")).toEqual([]);
+    expect(await laravel.mailbox("receiver@example.test").all()).toEqual([]);
   });
 });
 

@@ -38,4 +38,9 @@ return [
     'login' => ['guard' => 'web'],
     'factories' => ['User' => ['model' => User::class, 'states' => ['staff' => 'staff']]],
     'artisan' => ['about' => ['command' => 'about', 'fixed' => ['--only' => 'environment']]],
+    'schedule' => [
+        'probe' => ['command' => 'probe:schedule'],
+        'fail-probe' => ['command' => 'probe:schedule', 'fixed' => ['--fail' => true]],
+    ],
+    'fault_paths' => ['/probe/redirect'],
 ];

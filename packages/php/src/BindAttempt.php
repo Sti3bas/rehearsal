@@ -34,6 +34,13 @@ final readonly class BindAttempt
                 $integration->bind($attempt);
             }
 
+            if (config('rehearsal.fault_paths') && ! $request->is('_rehearsal', '_rehearsal/*')
+                && ($fault = RouteMocks::fault($attempt, $request)) !== null) {
+                return $fault;
+            }
+
+            HttpFakes::bind($attempt);
+
             return $next($request);
         } finally {
             $this->app->terminating(static function () use ($lease): void {

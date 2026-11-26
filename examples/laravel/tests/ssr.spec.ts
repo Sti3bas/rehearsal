@@ -8,4 +8,50 @@ for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
     expect(await response?.text()).toContain("<li>" + name + "</li>");
     await expect(page.locator("li")).toHaveText(["Baseline", name]);
   });
+
+  test("isolates shared browser and SSR route mocks for " + name, async ({ laravel, page, baseURL }) => {
+    await page.goto("/");
+    const state = (path: string) => ({ url: path, method: "get" as const });
+    await laravel.route(state, "/state").respond({ json: { users: [name] } });
+    await laravel.route("/state?preview=*").respond({ status: 202, json: { users: ["preview"] }, once: true });
+    const fetchState = (path: string) => page.evaluate(async (url) => {
+      const response = await fetch(url);
+      return { status: response.status, users: (await response.json()).users };
+    }, path);
+    expect(await fetchState("/state?preview=one")).toEqual({ status: 202, users: ["preview"] });
+    expect(await fetchState("/state?preview=one")).toEqual({ status: 200, users: [name] });
+    await laravel.route("/probe/outside-db").respond({});
+    expect(await page.evaluate(async () => {
+      const response = await fetch("/probe/outside-db");
+      return { status: response.status, body: await response.text() };
+    })).toEqual({ status: 200, body: "" });
+    await laravel.route("/probe/outside-db").respond({ networkError: true, once: true });
+    await expect(page.evaluate(() => fetch("/probe/outside-db"))).rejects.toThrow();
+    await laravel.route("/probe/redirect").fault({ status: 503, json: { unavailable: {} }, once: true });
+    const fault = await page.request.get(baseURL + "/probe/redirect");
+    expect(fault.status()).toBe(503);
+    expect(await fault.json()).toEqual({ unavailable: {} });
+    await laravel.route("/probe/outside-db").respond({ json: { empty: {}, numbers: [] } });
+    expect(await page.evaluate(async () => (await fetch("/probe/outside-db")).json())).toEqual({ empty: {}, numbers: [] });
+    expect((await page.request.get(baseURL + "/probe/redirect", { maxRedirects: 0 })).status()).toBe(302);
+    await laravel.route("/state").respond({ json: { users: [name + " SSR only"] }, delay: 10, once: true });
+    const response = await page.goto("http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT);
+    expect(await response?.text()).toContain("<li>" + name + " SSR only</li>");
+    await page.goto("/");
+    expect(await fetchState("/state")).toEqual({ status: 200, users: [name] });
+  });
 }
+
+test.describe("route mocks on a reused slot", () => {
+  test.describe.configure({ mode: "serial" });
+  test("stubs a Laravel route", async ({ laravel, page }) => {
+    await laravel.route("/state").respond({ json: { users: ["stale"] } });
+    await page.goto("http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT);
+    await expect(page.locator("li")).toHaveText(["stale"]);
+  });
+
+  test("relays to real Laravel in the next attempt", async ({ page }) => {
+    await page.goto("http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT);
+    await expect(page.locator("li")).toHaveText(["Baseline"]);
+  });
+});

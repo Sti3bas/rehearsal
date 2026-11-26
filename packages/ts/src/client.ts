@@ -1,5 +1,9 @@
 import type { APIRequestContext, BrowserContext, Page } from "@playwright/test";
+import { encodeHttpRules, type HttpFakeRules } from "./http.js";
+import { Mailbox } from "./mail.js";
+import { Queue, type DrainOptions, type DrainResult } from "./queue.js";
 import { capabilityHeader, loopback, markerCookie, markerHeader, protocol } from "./transport.js";
+import { claimRoute, encodeRouteResponse, matchesRoute, mockResponse, routePattern, type RouteResponse, type RouteTarget } from "./routes.js";
 
 export interface FactoryDefinition {
   model: string;
@@ -13,11 +17,25 @@ type FactoryResult = Row | Row[];
 
 export class Laravel {
   private context?: BrowserContext;
+  private contexts = new Set<BrowserContext>();
+  private routeContexts = new WeakSet<BrowserContext>();
+  private patterns: ReturnType<typeof routePattern>[] = [];
   private pages = new Set<Page>();
   private time?: Date;
-  readonly queue = {
-    drain: (options: { queues?: string[]; maxJobs?: number } = {}) =>
-      this.operation<{ code: number; removed: number; pending: number; failed: number }>("queue.drain", options),
+  readonly queue = new Queue(this);
+  readonly http = {
+    fake: (rules: HttpFakeRules, options: { preventStrayRequests?: boolean } = {}) =>
+      this.operation<null>("http.fake", { rules: encodeHttpRules(rules), ...options }),
+  };
+  readonly schedule = {
+    run: async (names: string | string[], options: { drain?: DrainOptions } = {}) => {
+      const result = await this.operation<{ results: { name: string; code: number }[]; drain: DrainResult | null }>(
+        "schedule.run", { names: typeof names === "string" ? [names] : names, ...options },
+      );
+      const failure = result.results.find(({ code }) => code !== 0);
+      if (failure) throw new Error(`Rehearsal scheduled task "${failure.name}" failed (exit ${failure.code}).`);
+      return result;
+    },
   };
 
   constructor(
@@ -33,6 +51,10 @@ export class Laravel {
     return Object.hasOwn(this.metadata, name) ? this.metadata[name] : undefined;
   }
 
+  mailbox(recipient: string) {
+    return new Mailbox(this, recipient);
+  }
+
   async bindContext(context: BrowserContext) {
     const origins = [new URL(this.origin), new URL(this.frontendOrigin)];
     if (!origins.every(loopback)) {
@@ -43,6 +65,43 @@ export class Laravel {
       name: markerCookie, value: this.marker, url: origin + "/", httpOnly: true, sameSite: "Lax",
     })));
     this.context ??= context;
+    this.contexts.add(context);
+    context.once("close", () => this.contexts.delete(context));
+    if (this.patterns.length) await this.installRouteMocks(context);
+  }
+
+  route(target: RouteTarget): ReturnType<Laravel["routeActions"]>;
+  route<P>(target: (params: P) => RouteTarget, params: P): ReturnType<Laravel["routeActions"]>;
+  route(target: () => RouteTarget): ReturnType<Laravel["routeActions"]>;
+  route<P>(target: RouteTarget | ((params?: P) => RouteTarget), params?: P) {
+    return this.routeActions(routePattern(typeof target === "function" ? target(params) : target, this.origin));
+  }
+
+  private routeActions(pattern: ReturnType<typeof routePattern>) {
+    return {
+      respond: async (response: RouteResponse) => {
+        await this.operation("route.mock", { ...pattern, response: encodeRouteResponse(response) });
+        this.patterns.push(pattern);
+        await Promise.all([...this.contexts].map((context) => this.installRouteMocks(context)));
+      },
+      fault: (response: Omit<RouteResponse, "abort" | "networkError">) =>
+        this.operation("route.fault", { ...pattern, response: encodeRouteResponse(response) }),
+    };
+  }
+
+  private async installRouteMocks(context: BrowserContext) {
+    if (this.routeContexts.has(context)) return;
+    this.routeContexts.add(context);
+    await context.route((url) => url.origin === this.origin && !/^\/_rehearsal(?:\/|$)/.test(url.pathname), async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (!this.patterns.some((pattern) => matchesRoute(pattern, url, request.method()))) return route.fallback();
+      const rule = await claimRoute(this.origin, this.marker, request.method(), url);
+      if (!rule) return route.fallback();
+      const response = await mockResponse(rule);
+      if (rule.abort || rule.networkError) return route.abort(rule.abort ? "aborted" : "failed");
+      return route.fulfill({ ...response, headers: Object.fromEntries(response.headers) });
+    });
   }
 
   async preparePage(page: Page) {

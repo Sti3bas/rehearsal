@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Sti3bas\Rehearsal;
 
 use Illuminate\Broadcasting\BroadcastManager;
+use Illuminate\Broadcasting\Broadcasters\PusherBroadcaster;
+use Illuminate\Support\Facades\Validator;
 use RuntimeException;
 
 final class Reverb implements Integration, ClientMetadata
@@ -71,6 +73,40 @@ final class Reverb implements Integration, ClientMetadata
         $origin = LocalService::origin(config('rehearsal.reverb.origin'));
 
         return ['key' => $this->credentials($attempt)['key'], 'host' => $origin['host'], 'port' => $origin['port'] ?? 80, 'scheme' => 'ws'];
+    }
+
+    public function subscribed(array $input): bool
+    {
+        $data = Validator::validate($input, ['channel' => self::channelRules()]);
+        $channel = $this->broadcaster()->getPusher()->getChannelInfo($data['channel']);
+
+        return ($channel->occupied ?? false) === true;
+    }
+
+    public function broadcast(array $input): null
+    {
+        $data = Validator::validate($input, [
+            'channel' => self::channelRules(),
+            'event' => ['required', 'string', 'max:200', 'regex:/\A[a-zA-Z0-9_:.\\\\-]+\z/', 'not_regex:/\Apusher(?:_internal)?:/i'],
+            'payloadJson' => 'required|string|max:10000|json',
+        ]);
+        abort_unless(str_starts_with(ltrim($data['payloadJson']), '{'), 422);
+        abort_if(strlen($data['payloadJson']) + strlen($data['channel']) + strlen($data['event']) > 10_000, 422);
+        $this->broadcaster()->getPusher()->trigger($data['channel'], $data['event'], $data['payloadJson'], already_encoded: true);
+
+        return null;
+    }
+
+    private function broadcaster(): PusherBroadcaster
+    {
+        abort_unless(in_array(self::class, config('rehearsal.integrations'), true), 404, 'Rehearsal Reverb is not enabled.');
+
+        return app(BroadcastManager::class)->connection('reverb');
+    }
+
+    private static function channelRules(): array
+    {
+        return ['required', 'string', 'max:200', 'regex:/\A[a-zA-Z0-9_=@,.;-]+\z/'];
     }
 
     private function credentials(Attempt $attempt): array
