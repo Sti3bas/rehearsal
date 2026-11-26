@@ -1,6 +1,9 @@
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { closeSync, openSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { capabilityHeader, managedLaunch, markerHeader, protocol } from "../packages/ts/dist/transport.js";
@@ -13,6 +16,11 @@ const origin = "http://127.0.0.1:" + port;
 const requests = Number(process.env.REHEARSAL_BENCH_REQUESTS ?? 500);
 const attempts = Number(process.env.REHEARSAL_BENCH_ATTEMPTS ?? 30);
 const scout = process.env.REHEARSAL_BENCH_SCOUT;
+const reverb = process.env.REHEARSAL_BENCH_REVERB === "true";
+const integrations = {
+  ...(scout ? { REHEARSAL_INTEGRATION_SCOUT: scout } : {}),
+  ...(reverb ? { REHEARSAL_INTEGRATION_REVERB: "true" } : {}),
+};
 const logfile = openSync(process.env.REHEARSAL_BENCH_LOG ?? "/dev/null", "a");
 
 if (![port, requests, attempts].every((value) => Number.isSafeInteger(value) && value > 0)
@@ -71,13 +79,45 @@ async function suite(workers) {
   return Number((performance.now() - start).toFixed(1));
 }
 
+async function measureProvision() {
+  const run = randomBytes(12).toString("hex");
+  const runPath = join(cwd, ".rehearsal", "runs", run);
+  const env = {
+    PATH: process.env.PATH,
+    HOME: process.env.HOME,
+    PHP_INI_SCAN_DIR: process.env.PHP_INI_SCAN_DIR,
+    APP_CONFIG_CACHE: join(runPath, "config.php"),
+    REHEARSAL_ENABLED: "true",
+    REHEARSAL_RUN: run,
+    REHEARSAL_CAPABILITY: randomBytes(32).toString("hex"),
+    DB_CONNECTION: "sqlite",
+    ...integrations,
+  };
+  const artisan = async (command) => {
+    const child = spawn("php", ["artisan", command, "--env=playwright", "--no-interaction"], {
+      cwd, env, stdio: ["ignore", logfile, logfile],
+    });
+    const [code] = await once(child, "exit");
+    if (code !== 0) throw new Error(command + " failed. Set REHEARSAL_BENCH_LOG for details.");
+  };
+  const start = performance.now();
+  try {
+    await artisan("rehearsal:provision");
+    return Math.round(performance.now() - start);
+  } finally {
+    await artisan("rehearsal:cleanup");
+    await rm(runPath, { recursive: true, force: true });
+  }
+}
+
 try {
   const args = ["artisan", "serve", "--env=playwright", "--host=127.0.0.1", "--port=" + port, "--no-reload", "--tries=1"];
   const disabled = await withServer("php", args, { ...process.env, REHEARSAL_ENABLED: "false", PHP_CLI_SERVER_WORKERS: "8" },
     "/api/noop", async (startupMs) => ({ startupMs: Math.round(startupMs), request: await measureRequests() }));
   const enabled = await withServer(process.execPath, [launcher, String(port), "8", "artisan"], {
     ...process.env,
-    ...(scout ? { REHEARSAL_MANAGED_REHEARSAL_INTEGRATION_SCOUT: scout } : {}),
+    REHEARSAL_MANAGED_DB_CONNECTION: "sqlite",
+    ...Object.fromEntries(Object.entries(integrations).map(([key, value]) => ["REHEARSAL_MANAGED_" + key, value])),
   }, "/_rehearsal/ready", async (startupMs) => {
     const launch = await managedLaunch(cwd, port);
     const startAttempt = async () => {
@@ -99,8 +139,9 @@ try {
       request: await measureRequests({ [markerHeader]: warm.at(-1).marker }),
     };
   });
+  const provisionMs = await measureProvision();
   const suiteMs = process.argv.includes("--http-only") ? undefined : { oneWorker: await suite(1), fourWorkers: await suite(4) };
-  console.log(JSON.stringify({ requests, attempts, scout: scout ?? null, disabled, enabled, suiteMs }, null, 2));
+  console.log(JSON.stringify({ requests, attempts, scout: scout ?? null, reverb, disabled, enabled, provisionMs, suiteMs }, null, 2));
 } finally {
   closeSync(logfile);
 }
