@@ -45,6 +45,8 @@ it('protects control calls and fences markers when a test slot is reused', funct
         $this->getJson('/probe', [Protocol::MARKER => $second])->assertOk()->assertJson(['slot' => 2]);
         $this->postJson('/_rehearsal/call', ['name' => 'arbitrary', 'data' => []], [Protocol::MARKER => $second])
             ->assertUnauthorized();
+        unlink($run->path('slot-2.attempt'));
+        $this->getJson('/probe', [Protocol::MARKER => $second])->assertStatus(409);
     } finally {
         (new Filesystem)->deleteDirectory($run->path());
     }

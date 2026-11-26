@@ -57,6 +57,9 @@ final class RouteMocks
 
     public static function fault(Attempt $attempt, Request $request): ?Response
     {
+        if (! is_file($attempt->path('route-faults.json'))) {
+            return null;
+        }
         $rule = self::claim($attempt, $request->method(), $request->getRequestUri(), true);
         if ($rule === null) {
             return null;
