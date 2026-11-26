@@ -1,5 +1,7 @@
 <script setup lang="ts">
+const { laravelOrigin } = useRuntimeConfig().public;
 const { data } = await useFetch<{ users: string[] }>("/state", {
+  baseURL: laravelOrigin,
   $fetch: useRehearsalFetch(),
 });
 </script>
