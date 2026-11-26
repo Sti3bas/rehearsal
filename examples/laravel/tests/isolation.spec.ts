@@ -4,6 +4,21 @@ import { expect, test } from "@sti3bas/rehearsal";
 
 const collision = "same-address@example.test";
 
+test("logs additional browser contexts into independent sessions in the same attempt", async ({ laravel, page, browser, baseURL }) => {
+  const original = await laravel.factory("User", { name: "Original" });
+  const actor = await laravel.factory("User", { name: "Actor" });
+  await laravel.login({ id: Number(original.id) });
+
+  const secondary = await browser.newContext({ baseURL });
+  try {
+    await laravel.login({ id: Number(actor.id) }, secondary);
+    expect(await (await secondary.request.get("/state")).json()).toMatchObject({ user: "Actor" });
+    expect(await (await page.request.get("/state")).json()).toMatchObject({ user: "Original" });
+  } finally {
+    await secondary.close();
+  }
+});
+
 for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
   test("isolates " + name + " with identical IDs and resource keys", async ({ laravel, page }, info) => {
     const base = await page.goto("/state");

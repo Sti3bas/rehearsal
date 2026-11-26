@@ -89,7 +89,7 @@ php artisan vendor:publish --tag=rehearsal-config
 | Call | What it does |
 | --- | --- |
 | `laravel.factory("User", attrs, { states, count })` | Creates a model or a batch. The model and state aliases must be registered in config. Pass an array of definitions to batch several factories into one call. |
-| `laravel.login({ id })` | Logs in the current browser context through the configured guard. Opt in with `'login' => ['guard' => 'web']`. |
+| `laravel.login({ id }, context?)` | Logs in the current browser context through the configured guard. Pass another browser context to bind it to the same attempt and log it in separately. Opt in with `'login' => ['guard' => 'web']`. |
 | `laravel.travel("2034-01-02T12:00:00.000Z")` | Sets Laravel's test clock and the fixed time on pages managed by the fixture. |
 | `laravel.artisan("about", {})` | Runs a configured alias, never an arbitrary Artisan command. |
 | `laravel.operation("reports.stage", input)` | Calls a named, validated application operation. |

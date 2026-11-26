@@ -166,9 +166,10 @@ export class Laravel {
     return batch ? rows : rows[0];
   }
 
-  async login(user: { id: number | string }) {
-    if (!this.context) throw new Error("Rehearsal login requires a browser context fixture.");
-    return this.post<number | string>(this.context.request, "login", user);
+  async login(user: { id: number | string }, context = this.context) {
+    if (!context) throw new Error("Rehearsal login requires a browser context fixture.");
+    if (!this.contexts.has(context)) await this.bindContext(context);
+    return this.post<number | string>(context.request, "login", user);
   }
 
   async travel(value: string | Date) {
