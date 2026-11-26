@@ -1,0 +1,11 @@
+{
+  "name": "rehearsal-monorepo",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/ts"],
+  "scripts": {
+    "build": "npm run build --workspace @sti3bas/rehearsal",
+    "test": "npm run test --workspace @sti3bas/rehearsal",
+    "e2e": "cd examples/laravel && playwright test"
+  }
+}
