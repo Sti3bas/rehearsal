@@ -35,7 +35,7 @@ return new class extends Migration
             $table->string('owner');
             $table->integer('expiration');
         });
-        Schema::create('jobs', function (Blueprint $table): void {
+        Schema::create(config('queue.connections.database.table'), function (Blueprint $table): void {
             $table->id();
             $table->string('queue')->index();
             $table->longText('payload');
@@ -44,7 +44,7 @@ return new class extends Migration
             $table->unsignedInteger('available_at');
             $table->unsignedInteger('created_at');
         });
-        Schema::create('failed_jobs', function (Blueprint $table): void {
+        Schema::create(config('queue.failed.table'), function (Blueprint $table): void {
             $table->id();
             $table->string('uuid')->unique();
             $table->text('connection');

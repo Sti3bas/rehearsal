@@ -122,16 +122,19 @@ final readonly class Control
 
     private function drain(array $input): array
     {
-        $queues = config('rehearsal.queues', ['default']);
+        $queues = config('rehearsal.queues', [config('queue.connections.database.queue', 'default')]);
         $data = Validator::validate($input, [
             'queues' => 'sometimes|array|list|min:1|max:10',
             'queues.*' => ['required', 'string', Rule::in($queues)],
             'maxJobs' => 'sometimes|integer|min:1|max:100',
         ]);
         $requested = $data['queues'] ?? $queues;
-        $jobs = DB::table('jobs')->whereIn('queue', $requested);
+        $jobs = DB::connection(config('queue.connections.database.connection'))
+            ->table(config('queue.connections.database.table'))->whereIn('queue', $requested);
+        $failures = DB::connection(config('queue.failed.database'))
+            ->table(config('queue.failed.table'))->where('connection', 'database')->whereIn('queue', $requested);
         $before = $jobs->count();
-        $failed = DB::table('failed_jobs')->count();
+        $failed = $failures->count();
         $exit = Artisan::call('queue:work', [
             'connection' => 'database',
             '--queue' => implode(',', $requested),
@@ -147,7 +150,7 @@ final readonly class Control
             'code' => $exit,
             'removed' => max(0, $before - $pending),
             'pending' => $pending,
-            'failed' => DB::table('failed_jobs')->count() - $failed,
+            'failed' => $failures->count() - $failed,
         ];
     }
 }
