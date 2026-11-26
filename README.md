@@ -86,7 +86,20 @@ For traffic that must actually reach Laravel, allowlist paths or glob patterns i
 | `laravel.factory("User", attrs, { states, count })` | Creates a model or a batch. The model and state aliases must be registered in config. Pass an array of definitions to batch several factories into one call. |
 | `laravel.login({ id })` | Logs in the current browser context through the configured guard. Opt in with `'login' => ['guard' => 'web']`. |
 | `laravel.travel("2034-01-02T12:00:00.000Z")` | Sets Laravel's test clock and the fixed time on pages managed by the fixture. |
-| `laravel.queue.drain({ queues, maxJobs })` | Runs bounded database queue work. Omit `queues` to use the configured allowlist, which defaults to Laravel's database queue name. Returns pending, removed, and failed counts. |
+| `laravel.queue.drain({ queues, maxJobs })` | Runs bounded database queue work. Omit `queues` to use the configured allowlist, which defaults to Laravel's database queue name. Returns processed, pending, removed, and failed counts and failed job details. |
+
+Use `laravel.queue.failed()` to inspect failed jobs for the attempt. For work dispatched after a request returns, use `drainUntil` with an assertion rather than waiting for the pending count to reach zero:
+
+```ts
+await laravel.queue.drainUntil(async () => {
+  expect(await laravel.operation("reports.status")).toBe("complete");
+}, { queues: ["reports"], timeout: 10_000 });
+await laravel.schedule.run(["expire-listings"], { drain: { queues: ["default"] } });
+```
+
+In `config/rehearsal.php`, register scheduled commands as
+`'schedule' => ['expire-listings' => ['command' => 'listings:expire']]`.
+An entry may include trusted `fixed` Artisan arguments. The helper runs only the named tasks once, in the attempt's app and clock; it does not evaluate cron timing or start a scheduler daemon. Omit `drain` to leave queued work pending.
 | `laravel.artisan("about", {})` | Runs a configured alias, never an arbitrary Artisan command. |
 | `laravel.operation("reports.stage", input)` | Calls a named, validated application operation. |
 

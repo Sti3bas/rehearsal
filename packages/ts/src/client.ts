@@ -1,5 +1,6 @@
 import type { APIRequestContext, BrowserContext, Page } from "@playwright/test";
 import { Mailbox } from "./mail.js";
+import { Queue, type DrainOptions, type DrainResult } from "./queue.js";
 import { capabilityHeader, loopback, markerCookie, markerHeader, protocol } from "./transport.js";
 import { claimRoute, matchesRoute, mockResponse, routePattern, type RouteResponse, type RouteTarget } from "./routes.js";
 
@@ -20,9 +21,16 @@ export class Laravel {
   private patterns: ReturnType<typeof routePattern>[] = [];
   private pages = new Set<Page>();
   private time?: Date;
-  readonly queue = {
-    drain: (options: { queues?: string[]; maxJobs?: number } = {}) =>
-      this.operation<{ code: number; removed: number; pending: number; failed: number }>("queue.drain", options),
+  readonly queue = new Queue(this);
+  readonly schedule = {
+    run: async (names: string | string[], options: { drain?: DrainOptions } = {}) => {
+      const result = await this.operation<{ results: { name: string; code: number }[]; drain: DrainResult | null }>(
+        "schedule.run", { names: typeof names === "string" ? [names] : names, ...options },
+      );
+      const failure = result.results.find(({ code }) => code !== 0);
+      if (failure) throw new Error(`Rehearsal scheduled task "${failure.name}" failed (exit ${failure.code}).`);
+      return result;
+    },
   };
 
   constructor(

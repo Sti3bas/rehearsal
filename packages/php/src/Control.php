@@ -44,7 +44,9 @@ final readonly class Control
             'factory' => $this->factory($data),
             'travel' => $this->travel($attempt, $data),
             'artisan' => $this->artisan($data),
-            'queue.drain' => $this->drain($data),
+            'queue.drain' => QueueControl::drain($data),
+            'queue.failed' => QueueControl::failed($data),
+            'schedule.run' => QueueControl::schedule($data),
             'route.mock' => RouteMocks::register($attempt, $data, false),
             'route.fault' => RouteMocks::register($attempt, $data, true),
             'reverb.subscribed' => app(Reverb::class)->subscribed($data),
@@ -123,39 +125,5 @@ final readonly class Control
         $exit = Artisan::call($entry['command'], ($entry['fixed'] ?? []) + $args);
 
         return ['code' => $exit];
-    }
-
-    private function drain(array $input): array
-    {
-        $queues = config('rehearsal.queues', [config('queue.connections.database.queue', 'default')]);
-        $data = Validator::validate($input, [
-            'queues' => 'sometimes|array|list|min:1|max:10',
-            'queues.*' => ['required', 'string', Rule::in($queues)],
-            'maxJobs' => 'sometimes|integer|min:1|max:100',
-        ]);
-        $requested = $data['queues'] ?? $queues;
-        $jobs = DB::connection(config('queue.connections.database.connection'))
-            ->table(config('queue.connections.database.table'))->whereIn('queue', $requested);
-        $failures = DB::connection(config('queue.failed.database'))
-            ->table(config('queue.failed.table'))->where('connection', 'database')->whereIn('queue', $requested);
-        $before = $jobs->count();
-        $failed = $failures->count();
-        $exit = Artisan::call('queue:work', [
-            'connection' => 'database',
-            '--queue' => implode(',', $requested),
-            '--stop-when-empty' => true,
-            '--max-jobs' => $data['maxJobs'] ?? 25,
-            '--max-time' => 20,
-            '--tries' => 1,
-            '--sleep' => 0,
-        ]);
-        $pending = $jobs->count();
-
-        return [
-            'code' => $exit,
-            'removed' => max(0, $before - $pending),
-            'pending' => $pending,
-            'failed' => $failures->count() - $failed,
-        ];
     }
 }

@@ -77,5 +77,6 @@ export { expect } from "@playwright/test";
 export { Laravel, type FactoryDefinition } from "./client.js";
 export type { RouteTarget, RouteResponse } from "./routes.js";
 export type { Mailbox, MailFilter, MailMessage, MailSummary } from "./mail.js";
+export type { DrainOptions, DrainResult, FailedJob } from "./queue.js";
 export { laravelServer } from "./server.js";
 export { injectReverb, type ReverbClientConfig } from "./reverb.js";

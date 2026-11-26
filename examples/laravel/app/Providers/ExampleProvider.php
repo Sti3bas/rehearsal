@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Jobs\WriteProbe;
 use App\Models\User;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -23,6 +24,9 @@ final class ExampleProvider extends ServiceProvider
         ], function (array $data): void {
             Storage::disk('local')->put('probe.txt', $data['value']);
             Bus::dispatch(new WriteProbe($data['value']));
+        });
+        Artisan::command('probe:schedule {--fail}', function (): void {
+            Bus::dispatch(new WriteProbe('scheduled', (bool) $this->option('fail')));
         });
         if (config('rehearsal.scout.engine')) {
             if (config('rehearsal.scout.engine') === 'meilisearch') {

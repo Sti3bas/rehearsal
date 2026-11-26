@@ -26,5 +26,20 @@ for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
     await laravel.travel("2034-01-02T12:00:00.000Z");
     expect(await page.evaluate(() => new Date().toISOString())).toBe("2034-01-02T12:00:00.000Z");
     expect(await (await page.goto("/state"))?.json()).toMatchObject({ time: "2034-01-02" });
+    expect(await laravel.queue.failed()).toEqual([]);
+    await expect(laravel.schedule.run("not-allowlisted")).rejects.toThrow("HTTP 422");
+    expect(await laravel.schedule.run("probe", { drain: {} })).toMatchObject({
+      results: [{ name: "probe", code: 0 }],
+      drain: { processed: 1, failed: 0 },
+    });
+    await laravel.schedule.run("probe");
+    await laravel.queue.drainUntil(async () => {
+      expect(await (await page.request.get("/state")).json()).toMatchObject({ cache: "scheduled" });
+    });
+    await laravel.schedule.run("fail-probe");
+    await expect(laravel.queue.drainUntil(() => {})).rejects.toThrow("WriteProbe");
+    expect(await laravel.queue.failed()).toEqual([
+      expect.objectContaining({ job: "App\\Jobs\\WriteProbe", exception: "RuntimeException" }),
+    ]);
   });
 }
