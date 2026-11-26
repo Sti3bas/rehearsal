@@ -96,6 +96,25 @@ php artisan vendor:publish --tag=rehearsal-config
 | `laravel.artisan("about", {})` | Runs a configured alias, never an arbitrary Artisan command. |
 | `laravel.operation("reports.stage", input)` | Calls a named, validated application operation. |
 
+#### Generate types from your Laravel app
+
+Run `php artisan rehearsal:types ../frontend/rehearsal.generated.d.ts --env=playwright` from the Laravel root, then include the resulting file in your Playwright TypeScript project. Use the environment that registers your fixtures and operations. For a Playwright global setup, import `generateRehearsalTypes` from `@sti3bas/rehearsal` and await `generateRehearsalTypes({ root: "../backend", path: "../frontend/rehearsal.generated.d.ts", environment: "playwright" })`; the output path is relative to the Laravel root. Generate before running a separate TypeScript check.
+
+The declaration augments the Playwright fixture and the `Laravel` client. Without it, the client accepts string aliases and returns generic rows. With it, editors suggest the registered aliases and infer model and operation results:
+
+```ts
+const listing = await laravel.create("Listing", { state: "sold", attrs: { title: "Chair" } });
+const result = await laravel.call("listing.observe", { id: listing.id });
+const [seller, listings] = await laravel.factory([
+  { model: "User" },
+  { model: "Listing", count: 2, refs: { seller: 0 } },
+]);
+```
+
+- Factory properties are inferred from Eloquent fillable names, casts, defaults, and `@property` tags. Pass `--database=sqlite` (or another **disposable, migrated** named connection) to also read the column names, types, and nullability. Without that flag the generator does not inspect the database. Add a factory's `types.attributes` or `types.model` map of property names to TypeScript type expressions when inference is incomplete, and list guaranteed result fields in `types.required`. Inferred results omit hidden fields; custom overrides should describe the actual serialized JSON.
+- Register a batch relation with `'relations' => ['seller' => 'User']` on the `Listing` factory. Use an Eloquent `belongsTo` method name and the related factory alias. `refs` accepts a zero-based index of an earlier **single** result, which supplies the foreign key for all records in the referring item. The server validates the order, alias, and relation.
+- `laravel.call` types named operations, including those registered by a provider. Input inference handles simple validation rules and output inference handles basic PHP return types. For nested objects, conditional rules, or custom resources, specify `'types' => ['input' => '{ id: number }', 'output' => '{ status: string }']` in the operation config, or pass the same map as the fourth argument to `Operations::register`. `laravel.operation<T>` remains available for dynamic or manually typed calls. Artisan aliases can likewise declare `types.input`; schedule names and server fault paths are inferred directly from their allowlists.
+
 #### Extend the fixtures with app operations
 
 Register operations on the Laravel side using `Operations::register($name, $rules, $handler)`. Unregistered names are rejected; the TypeScript declarations do not replace server-side input validation.

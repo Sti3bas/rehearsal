@@ -4,6 +4,8 @@ import { bindOperations, type BoundOperations, type OperationDefinitions } from 
 import { injectReverb, Reverb } from "./reverb.js";
 import { loopback, managedLaunch, protocol } from "./transport.js";
 
+export interface RehearsalSchema {}
+
 interface RunConnection {
   origin: string;
   capability: string;
@@ -81,6 +83,7 @@ export type { Mailbox, MailFilter, MailMessage, MailSummary } from "./mail.js";
 export type { DrainOptions, DrainResult, FailedJob } from "./queue.js";
 export type { HttpFakeResponse, HttpFakeRule, HttpFakeRules } from "./http.js";
 export { laravelServer } from "./server.js";
+export { generateRehearsalTypes } from "./types.js";
 export { injectReverb, type ReverbClientConfig } from "./reverb.js";
 export function defineRehearsal<T extends OperationDefinitions>({ operations }: { operations: T }) {
   return test.extend<{ operations: BoundOperations<T> }>({

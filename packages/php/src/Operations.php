@@ -14,13 +14,23 @@ final class Operations
 
     public function __construct(private readonly array $configured = []) {}
 
-    public function register(string $name, array $rules, Closure $handler): void
+    public function register(string $name, array $rules, Closure $handler, array $types = []): void
     {
         if (isset($this->entries[$name]) || isset($this->configured[$name])) {
             throw new LogicException("Rehearsal operation [$name] is already registered.");
         }
 
-        $this->entries[$name] = [$rules, $handler];
+        $this->entries[$name] = [$rules, $handler, $types];
+    }
+
+    public function typeDefinitions(): array
+    {
+        $entries = $this->configured;
+        foreach ($this->entries as $name => [$rules, $handler, $types]) {
+            $entries[$name] = compact('rules', 'handler', 'types');
+        }
+
+        return $entries;
     }
 
     public function invoke(string $name, array $data): mixed
