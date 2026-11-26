@@ -10,6 +10,7 @@ use Laravel\Reverb\ApplicationManager;
 use Laravel\Reverb\Contracts\ApplicationProvider;
 use Laravel\Reverb\Exceptions\InvalidApplication;
 use Laravel\Reverb\Protocols\Pusher\ConnectionRegistry;
+use Laravel\Reverb\ServerProviderManager;
 use React\EventLoop\Loop;
 
 final class ReverbApplications implements ApplicationProvider
@@ -23,6 +24,7 @@ final class ReverbApplications implements ApplicationProvider
             'reverb.servers.reverb.scaling.enabled' => false,
             'cache.default' => 'array',
         ]);
+        app(ServerProviderManager::class)->forgetDrivers();
         $provider = new self;
         app(ApplicationManager::class)->extend('rehearsal', static fn () => $provider);
         Loop::addPeriodicTimer(1, static fn () => $provider->prune());

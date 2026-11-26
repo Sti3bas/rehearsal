@@ -23,5 +23,6 @@ services:
     environment:
       APP_ENV: playwright
       REHEARSAL_REVERB_SERVER: "true"
+      REVERB_SCALING_ENABLED: "${REVERB_SCALING_ENABLED:-false}"
       LOG_CHANNEL: stderr
     command: ["php", "artisan", "reverb:start", "--host=127.0.0.1", "--port=18080"]

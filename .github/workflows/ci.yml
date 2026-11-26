@@ -99,7 +99,7 @@ jobs:
       - name: Start disposable services
         run: |
           export REHEARSAL_UID="$(id -u)" REHEARSAL_GID="$(id -g)"
-          docker compose -f examples/laravel/compose.integrations.yml up --build --detach
+          REVERB_SCALING_ENABLED=true docker compose -f examples/laravel/compose.integrations.yml up --build --detach
           curl --retry 15 --retry-delay 1 --retry-all-errors --max-time 3 -fsS http://127.0.0.1:18025/api/v1/messages >/dev/null
           curl --retry 15 --retry-delay 1 --retry-all-errors --max-time 3 -fsS http://127.0.0.1:18108/health >/dev/null
           curl --retry 15 --retry-delay 1 --retry-all-errors --max-time 3 -fsS http://127.0.0.1:17700/health >/dev/null
