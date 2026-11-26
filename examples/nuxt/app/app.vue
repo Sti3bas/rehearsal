@@ -1,5 +1,7 @@
 <script setup lang="ts">
-const { laravelOrigin } = useRuntimeConfig().public;
+const laravelOrigin = useState("laravelOrigin", () =>
+  import.meta.server ? useRuntimeConfig().rehearsal.laravelOrigin : undefined,
+);
 const { data } = await useFetch<{ users: string[] }>("/state", {
   baseURL: laravelOrigin,
   $fetch: useRehearsalFetch(),

@@ -44,11 +44,7 @@ export default defineConfig({
       cwd: fileURLToPath(new URL("../nuxt/", import.meta.url)),
       url: "http://127.0.0.1:" + Number(ssrPort) + "/api/ready",
       timeout: 120_000,
-      env: {
-        NUXT_REHEARSAL_ENABLED: "true",
-        NUXT_REHEARSAL_LARAVEL_ORIGIN: "http://127.0.0.1:" + port,
-        NUXT_PUBLIC_LARAVEL_ORIGIN: "http://127.0.0.1:" + port,
-      },
+      env: { NUXT_REHEARSAL_ENABLED: "true", NUXT_REHEARSAL_LARAVEL_ORIGIN: "http://127.0.0.1:" + port },
     },
   ] : laravel,
 });
