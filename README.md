@@ -82,7 +82,31 @@ php artisan vendor:publish --tag=rehearsal-config
 | `laravel.artisan("about", {})` | Runs a configured alias, never an arbitrary Artisan command. |
 | `laravel.operation("reports.stage", input)` | Calls a named, validated application operation. |
 
+#### Extend the fixtures with app operations
+
+Register operations on the Laravel side using `Operations::register($name, $rules, $handler)`. Unregistered names are rejected; the TypeScript declarations do not replace server-side input validation.
+
+```ts
+import { defineOperation, defineRehearsal } from "@sti3bas/rehearsal";
+
+const rehearsal = defineRehearsal({
+  operations: {
+    stageReport: defineOperation<{ slug: string }, { id: number }>("reports.stage"),
+  },
+});
+
+export const test = rehearsal.extend<{ reportId: number }>({
+  reportId: async ({ operations }, use) => {
+    const { id } = await operations.stageReport({ slug: "weekly" });
+    await use(id);
+  },
+});
+```
+
+This is a Playwright test instance: compose it with ordinary fixtures for app-specific setup and fakes. To isolate a service on the Laravel side, register an app class implementing `Integration` under `rehearsal.integrations`. Its implementation and seed data stay in the consuming app.
+
 #### Mock Laravel routes
+
 
 ```ts
 await laravel.route("/api/listings/**").respond({ json: { data: [] }, delay: 100 });
