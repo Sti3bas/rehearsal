@@ -37,6 +37,11 @@ describe("client", () => {
     expect(server.command).toMatch(/'frankenphp' 'localhost'$/);
   });
 
+  it("passes the selected Laravel environment and rejects invalid names", () => {
+    expect(laravelServer({ environment: "browser-tests" }).env.REHEARSAL_MANAGED_APP_ENV).toBe("browser-tests");
+    expect(() => laravelServer({ environment: "../local" })).toThrow("Invalid Rehearsal environment name.");
+  });
+
   it("uses Typesense metadata under a custom integration name", () => {
     const origin = "http://127.0.0.1:8100";
     const config = { origin: "http://127.0.0.1:8108", collectionPrefix: "worker_", searchKey: "search-only" };

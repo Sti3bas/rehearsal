@@ -24,10 +24,13 @@ export function laravelServer({ port = 8100, host = "127.0.0.1", cwd = process.c
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(environment)) throw new Error("Invalid Rehearsal environment name.");
   const script = fileURLToPath(new URL("./launcher.js", import.meta.url));
   return {
-    command: [process.execPath, script, String(port), String(phpWorkers), server, host, environment].map(quote).join(" "),
+    command: [process.execPath, script, String(port), String(phpWorkers), server, host].map(quote).join(" "),
     cwd: resolve(cwd),
-    env: Object.fromEntries([...Object.entries(database), ...Object.entries(integrations)]
-      .map(([name, value]) => ["REHEARSAL_MANAGED_" + name, value])),
+    env: {
+      ...Object.fromEntries([...Object.entries(database), ...Object.entries(integrations)]
+        .map(([name, value]) => ["REHEARSAL_MANAGED_" + name, value])),
+      REHEARSAL_MANAGED_APP_ENV: environment,
+    },
     url: "http://" + host + ":" + port + "/_rehearsal/ready",
     timeout: 120_000,
     reuseExistingServer: false,

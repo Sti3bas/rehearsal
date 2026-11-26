@@ -10,7 +10,7 @@ const root = process.cwd();
 const port = Number(process.argv[2]);
 const workers = Number(process.argv[3]);
 const host = process.argv[5] ?? "127.0.0.1";
-const environment = process.argv[6] ?? "playwright";
+const environment = process.env.REHEARSAL_MANAGED_APP_ENV ?? "playwright";
 if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(environment)) throw new Error("Invalid Rehearsal environment name.");
 const run = randomBytes(12).toString("hex");
 const capability = randomBytes(32).toString("hex");
