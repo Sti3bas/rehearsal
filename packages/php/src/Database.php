@@ -13,6 +13,19 @@ final class Database implements Integration
 {
     private const CONNECTION = 'rehearsal';
 
+    private array $originalConnections = [];
+
+    public function isolateConnections(): void
+    {
+        $this->originalConnections = config('database.connections', []);
+        if (app()->resolved('db')) {
+            foreach (array_keys(DB::getConnections()) as $name) {
+                DB::purge($name);
+            }
+        }
+        config(['database.connections' => []]);
+    }
+
     public function provision(Run $run): void
     {
         $template = $this->template($run);
@@ -114,6 +127,13 @@ final class Database implements Integration
 
     private function select(string $database): void
     {
+        $aliases = array_unique([$this->driver(), ...config('rehearsal.database.aliases', [])]);
+        foreach ($aliases as $alias) {
+            if (! is_string($alias) || ! preg_match('/\A[a-zA-Z0-9_-]+\z/', $alias) || $alias === self::CONNECTION || $alias === 'rehearsal_unbound') {
+                throw new RuntimeException('Invalid Rehearsal database alias.');
+            }
+            DB::purge($alias);
+        }
         DB::purge(self::CONNECTION);
         $connection = $this->driver() === 'sqlite' ? [
             'driver' => 'sqlite',
@@ -121,8 +141,10 @@ final class Database implements Integration
             'busy_timeout' => 5000,
             'journal_mode' => 'WAL',
         ] : $this->serverConfig();
+        DB::extend('rehearsal-alias', static fn () => DB::connection(self::CONNECTION));
         config([
-            'database.connections.'.self::CONNECTION => array_replace($connection, ['database' => $database]),
+            'database.connections' => [self::CONNECTION => array_replace($connection, ['database' => $database])]
+                + array_fill_keys($aliases, ['driver' => 'rehearsal-alias']),
             'database.default' => self::CONNECTION,
         ]);
     }
@@ -130,7 +152,7 @@ final class Database implements Integration
     private function serverConfig(): array
     {
         $driver = $this->driver();
-        $connection = config('database.connections.'.$driver);
+        $connection = $this->originalConnections[$driver] ?? null;
         if (config('rehearsal.database.disposable_server') !== true
             || ! is_array($connection)
             || ! in_array($connection['host'] ?? null, ['127.0.0.1', '::1'], true)

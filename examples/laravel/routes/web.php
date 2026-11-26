@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Storage;
 
 Route::get('/', fn () => response('Rehearsal'));
 Route::get('/probe/redirect', fn () => redirect('/state'));
+Route::get('/probe/outside-db', fn () => ['configured' => config('database.connections.outside') !== null]);
 Route::get('/probe/events', fn () => response()->eventStream(function () {
     yield new \Illuminate\Http\StreamedEvent(event: 'probe', data: 'ready');
     sleep(4);

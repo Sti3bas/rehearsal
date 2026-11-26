@@ -6,6 +6,10 @@ test("keeps the browser bound across a redirect", async ({ page }) => {
   expect(await response?.json()).toMatchObject({ users: ["Baseline"] });
 });
 
+test("does not expose unlisted named connections to the application", async ({ page }) => {
+  expect(await (await page.goto("/probe/outside-db"))?.json()).toEqual({ configured: false });
+});
+
 test("delivers server-sent events before the response finishes", async ({ page }) => {
   await page.goto("/");
   expect(await page.evaluate(() => new Promise((resolve) => {

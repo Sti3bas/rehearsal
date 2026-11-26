@@ -33,6 +33,10 @@ final class ServiceProvider extends LaravelProvider
             'broadcasting.default' => 'log',
             'app.debug' => false,
         ]);
+        if (in_array(Database::class, config('rehearsal.integrations'), true)) {
+            $this->app->singleton(Database::class);
+            $this->app->make(Database::class)->isolateConnections();
+        }
         $this->callAfterResolving(Kernel::class, static fn ($kernel) => $kernel->prependMiddleware(BindAttempt::class));
     }
 

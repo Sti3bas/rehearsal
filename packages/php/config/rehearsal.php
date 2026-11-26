@@ -18,6 +18,7 @@ return [
     'database' => [
         'driver' => env('DB_CONNECTION', 'sqlite'),
         'disposable_server' => env('REHEARSAL_DB_DISPOSABLE', false),
+        'aliases' => [],
         'seeder' => null,
     ],
     'disks' => ['local', 'public'],

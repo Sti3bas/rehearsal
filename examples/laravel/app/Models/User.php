@@ -12,4 +12,9 @@ final class User extends Authenticatable
     protected $fillable = ['name', 'email'];
 
     protected $hidden = ['password'];
+
+    public function getConnectionName()
+    {
+        return parent::getConnectionName() ?? 'members';
+    }
 }
