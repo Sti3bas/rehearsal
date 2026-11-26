@@ -1,11 +1,32 @@
 {
-  "name": "rehearsal-monorepo",
-  "private": true,
+  "name": "@sti3bas/rehearsal",
+  "version": "0.1.0",
+  "description": "Parallel Playwright testing for Laravel",
+  "license": "MIT",
   "type": "module",
-  "workspaces": ["packages/ts", "examples/nuxt"],
+  "engines": {"node": "^22.18.0 || ^24.0.0"},
+  "workspaces": ["examples/nuxt"],
+  "exports": {
+    ".": {"types": "./packages/ts/dist/index.d.ts", "default": "./packages/ts/dist/index.js"},
+    "./ssr": {"types": "./packages/ts/dist/ssr.d.ts", "default": "./packages/ts/dist/ssr.js"},
+    "./nuxt": {"types": "./packages/ts/dist/nuxt.d.ts", "default": "./packages/ts/dist/nuxt.js"},
+    "./reporter": {"types": "./packages/ts/dist/reporter.d.ts", "default": "./packages/ts/dist/reporter.js"}
+  },
+  "files": ["packages/ts/dist"],
+  "dependencies": {"msw": "^3.0.8", "ofetch": "^1.5.1"},
+  "peerDependencies": {"@nuxt/kit": "^4.0.0", "@playwright/test": "^1.65.1"},
+  "peerDependenciesMeta": {"@nuxt/kit": {"optional": true}},
+  "devDependencies": {
+    "@nuxt/kit": "^4.0.0",
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^5.1.2"
+  },
   "scripts": {
-    "build": "npm run build --workspace @sti3bas/rehearsal",
-    "test": "npm run test --workspace @sti3bas/rehearsal",
+    "prepare": "npm run build",
+    "build": "tsc -p packages/ts",
+    "test": "vitest run packages/ts/tests",
     "e2e": "cd examples/laravel && playwright test"
   }
 }
