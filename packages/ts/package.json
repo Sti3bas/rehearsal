@@ -5,7 +5,11 @@
   "license": "MIT",
   "type": "module",
   "engines": {"node": "^22.18.0 || ^24.0.0"},
-  "exports": {".": {"types": "./dist/index.d.ts", "default": "./dist/index.js"}},
+  "exports": {
+    ".": {"types": "./dist/index.d.ts", "default": "./dist/index.js"},
+    "./ssr": {"types": "./dist/ssr.d.ts", "default": "./dist/ssr.js"},
+    "./reporter": {"types": "./dist/reporter.d.ts", "default": "./dist/reporter.js"}
+  },
   "files": ["dist"],
   "peerDependencies": {"@playwright/test": "^1.65.1"},
   "devDependencies": {
