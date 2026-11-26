@@ -5,12 +5,14 @@ import { Mailbox } from "./mail.js";
 import { Queue, type DrainOptions, type DrainResult } from "./queue.js";
 import { capabilityHeader, loopback, markerCookie, markerHeader, protocol } from "./transport.js";
 import { claimRoute, encodeRouteResponse, matchesRoute, mockResponse, routePattern, wait, waitForRouteGate, type RouteResponse, type RouteTarget } from "./routes.js";
+import type { ArtisanInput, ArtisanName, BatchChecks, BatchFactory, BatchResults, FactoryAttributes, FactoryModel, FactoryName, FactoryOptions, FactoryState, FaultArguments, FaultTarget, InputArguments, OperationInput, OperationName, OperationOutput, ScheduleName } from "./schema.js";
 
 export interface FactoryDefinition {
   model: string;
   attrs?: Record<string, unknown>;
-  states?: string[];
+  states?: readonly string[];
   count?: number;
+  refs?: Record<string, number>;
 }
 
 export interface TypesenseClientConfig {
@@ -21,6 +23,10 @@ export interface TypesenseClientConfig {
 
 type Row = Record<string, unknown>;
 type FactoryResult = Row | Row[];
+type FaultResponse = Omit<RouteResponse, "abort" | "networkError" | "passthrough">;
+type RouteActions<T extends RouteTarget> = Omit<ReturnType<Laravel["routeActions"]>, "fault"> & {
+  fault(...args: FaultArguments<T, FaultResponse>): Promise<unknown>;
+};
 
 export class Laravel {
   private context?: BrowserContext;
@@ -35,7 +41,7 @@ export class Laravel {
       this.operation<null>("http.fake", { rules: encodeHttpRules(rules), ...options }),
   };
   readonly schedule = {
-    run: async (names: string | string[], options: { drain?: DrainOptions } = {}) => {
+    run: async (names: ScheduleName | readonly ScheduleName[], options: { drain?: DrainOptions } = {}) => {
       const result = await this.operation<{ results: { name: string; code: number }[]; drain: DrainResult | null }>(
         "schedule.run", { names: typeof names === "string" ? [names] : names, ...options },
       );
@@ -88,9 +94,9 @@ export class Laravel {
     if (this.patterns.length) await this.installRouteMocks(context);
   }
 
-  route(target: RouteTarget): ReturnType<Laravel["routeActions"]>;
-  route<P>(target: (params: P) => RouteTarget, params: P): ReturnType<Laravel["routeActions"]>;
-  route(target: () => RouteTarget): ReturnType<Laravel["routeActions"]>;
+  route<const T extends RouteTarget>(target: T): RouteActions<T>;
+  route<P, const T extends RouteTarget>(target: (params: P) => T, params: P): RouteActions<T>;
+  route<const T extends RouteTarget>(target: () => T): RouteActions<T>;
   route<P>(target: RouteTarget | ((params?: P) => RouteTarget), params?: P) {
     return this.routeActions(routePattern(typeof target === "function" ? target(params) : target, this.origin));
   }
@@ -121,9 +127,13 @@ export class Laravel {
           release: () => this.operation("route.mock.release", { gate }),
         };
       },
-      fault: (response: Omit<RouteResponse, "abort" | "networkError" | "passthrough">) =>
+      fault: (response: FaultResponse) =>
         this.operation("route.fault", { ...pattern, response: encodeRouteResponse(response) }),
     };
+  }
+
+  fault(target: FaultTarget, response: FaultResponse) {
+    return this.routeActions(routePattern(target, this.origin)).fault(response);
   }
 
   private async installRouteMocks(context: BrowserContext) {
@@ -156,14 +166,21 @@ export class Laravel {
     if (this.time) await page.clock.setFixedTime(this.time);
   }
 
-  async factory(model: string, attrs?: Row, options?: { states?: string[] }): Promise<Row>;
-  async factory(model: string, attrs: Row, options: { states?: string[]; count: number }): Promise<Row[]>;
-  async factory(items: FactoryDefinition[]): Promise<FactoryResult[]>;
-  async factory(model: string | FactoryDefinition[], attrs: Row = {}, options: Omit<FactoryDefinition, "model" | "attrs"> = {}) {
-    const batch = Array.isArray(model);
-    const items = batch ? model : [{ model, attrs, ...options }];
-    const rows = await this.operation<FactoryResult[]>("factory", { items });
-    return batch ? rows : rows[0];
+  async factory<K extends FactoryName>(model: K, attrs: FactoryAttributes<NoInfer<K>>, options: FactoryOptions<NoInfer<K>> & { count: number }): Promise<FactoryModel<K>[]>;
+  async factory<K extends FactoryName>(model: K, attrs?: FactoryAttributes<NoInfer<K>>, options?: FactoryOptions<NoInfer<K>>): Promise<FactoryModel<K>>;
+  async factory<const Items extends readonly BatchFactory[]>(items: Items & BatchChecks<Items>): Promise<BatchResults<Items>>;
+  async factory(model: string | readonly FactoryDefinition[], attrs: Row = {}, options: Omit<FactoryDefinition, "model" | "attrs"> = {}) {
+    return typeof model === "string"
+      ? (await this.sendFactories([{ model, attrs, ...options }]))[0]
+      : this.sendFactories(model);
+  }
+
+  create<K extends FactoryName>(model: K, { state, attrs }: { state?: FactoryState<NoInfer<K>>; attrs?: FactoryAttributes<NoInfer<K>> } = {}): Promise<FactoryModel<K>> {
+    return this.factory(model, attrs, { states: state === undefined ? [] : [state] });
+  }
+
+  private sendFactories(items: readonly FactoryDefinition[]) {
+    return this.operation<FactoryResult[]>("factory", { items });
   }
 
   async login(user: { id: number | string }, context = this.context) {
@@ -179,8 +196,14 @@ export class Laravel {
     await Promise.all([...this.pages].map((page) => page.clock.setFixedTime(time)));
   }
 
-  artisan(name: string, args: Record<string, unknown> = {}) {
+  artisan<K extends ArtisanName>(name: K, ...[args]: InputArguments<ArtisanInput<NoInfer<K>>>): Promise<{ code: number }>;
+  artisan(name: string, args: object = {}) {
     return this.operation<{ code: number }>("artisan", { name, args });
+  }
+
+  call<K extends OperationName>(name: K, ...[data]: InputArguments<OperationInput<NoInfer<K>>>): Promise<OperationOutput<K>>;
+  call(name: string, data: object = {}) {
+    return this.operation(name, data as Row);
   }
 
   operation<T = unknown>(name: string, data: Record<string, unknown> = {}) {

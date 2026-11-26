@@ -39,7 +39,10 @@ return [
         'aliases' => ['members'],
     ],
     'login' => ['guard' => 'web'],
-    'factories' => ['User' => ['model' => User::class, 'states' => ['staff' => 'staff']]],
+    'factories' => [
+        'Category' => ['model' => Category::class],
+        'User' => ['model' => User::class, 'states' => ['staff' => 'staff'], 'relations' => ['category' => 'Category']],
+    ],
     'artisan' => ['about' => ['command' => 'about', 'fixed' => ['--only' => 'environment']]],
     'schedule' => [
         'probe' => ['command' => 'probe:schedule'],

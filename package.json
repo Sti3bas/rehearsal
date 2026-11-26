@@ -26,7 +26,7 @@
   "scripts": {
     "prepare": "npm run build",
     "build": "tsc -p packages/ts",
-    "test": "vitest run packages/ts/tests",
+    "test": "tsc -p packages/ts/tests/tsconfig.types.json && vitest run packages/ts/tests",
     "e2e": "cd examples/laravel && playwright test"
   }
 }

@@ -4,6 +4,18 @@ import { expect, test } from "@sti3bas/rehearsal";
 
 const collision = "same-address@example.test";
 
+test("resolves configured belongs-to references in a factory batch", async ({ laravel }) => {
+  const [category, users] = await laravel.factory([
+    { model: "Category", attrs: { name: "Collectibles" } },
+    { model: "User", count: 2, refs: { category: 0 } },
+  ]);
+  expect(users.map((user) => user.category_id)).toEqual([category.id, category.id]);
+  await expect(laravel.factory([
+    { model: "User", refs: { category: 1 } },
+    { model: "Category" },
+  ])).rejects.toThrow("HTTP 422");
+});
+
 test("logs additional browser contexts into independent sessions in the same attempt", async ({ laravel, page, browser, baseURL }) => {
   const original = await laravel.factory("User", { name: "Original" });
   const actor = await laravel.factory("User", { name: "Actor" });

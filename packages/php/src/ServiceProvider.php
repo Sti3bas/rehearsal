@@ -69,7 +69,7 @@ final class ServiceProvider extends LaravelProvider
         }
         $this->publishes([__DIR__.'/../config/rehearsal.php' => config_path('rehearsal.php')], 'rehearsal-config');
         if ($this->app->runningInConsole()) {
-            $this->commands([InstallCommand::class]);
+            $this->commands([InstallCommand::class, TypesCommand::class]);
         }
         if (! $this->active()) {
             return;

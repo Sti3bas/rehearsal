@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sti3bas\Rehearsal;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -81,12 +82,14 @@ final readonly class Control
         $factories = config('rehearsal.factories');
         $data = Validator::validate($input, [
             'items' => 'required|array|list|min:1|max:100',
-            'items.*' => 'required|array:model,attrs,states,count',
+            'items.*' => 'required|array:model,attrs,states,count,refs',
             'items.*.model' => ['required', 'string', Rule::in(array_keys($factories))],
             'items.*.attrs' => 'sometimes|array|max:100',
             'items.*.states' => 'sometimes|array|list|max:10',
             'items.*.states.*' => 'required|string',
             'items.*.count' => 'sometimes|integer|min:1|max:100',
+            'items.*.refs' => 'sometimes|array|max:10',
+            'items.*.refs.*' => 'required|integer|min:0',
         ]);
         abort_if(array_sum(array_map(fn ($item) => $item['count'] ?? 1, $data['items'])) > 100, 422);
 
@@ -105,7 +108,18 @@ final readonly class Control
                 if (isset($item['count'])) {
                     $factory = $factory->count((int) $item['count']);
                 }
-                $results[] = $factory->create($item['attrs'] ?? []);
+                $attributes = $item['attrs'] ?? [];
+                foreach ($item['refs'] ?? [] as $name => $index) {
+                    $target = $definition['relations'][$name] ?? null;
+                    $related = $results[$index] ?? null;
+                    abort_unless($target !== null && $related instanceof Model
+                        && $data['items'][$index]['model'] === $target, 422, 'Invalid factory relation reference.');
+                    $relation = (new $model)->{$name}();
+                    abort_unless($relation instanceof BelongsTo && is_a($related, $relation->getRelated()::class),
+                        422, 'Factory relation must be a configured belongs-to relation.');
+                    $attributes[$relation->getForeignKeyName()] = $related->getAttribute($relation->getOwnerKeyName());
+                }
+                $results[] = $factory->create($attributes);
             }
 
             return $results;
