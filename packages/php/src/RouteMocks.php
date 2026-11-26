@@ -18,7 +18,7 @@ final class RouteMocks
         $data = Validator::validate($input, [
             'path' => ['required', 'string', 'max:1024', 'starts_with:/', 'not_regex:/^\/\//'],
             'method' => ['nullable', 'string', Rule::in(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])],
-            'response' => 'required|array:status,jsonBody,body,headers,delay,abort,networkError,once',
+            'response' => ($fault ? 'required' : 'present').'|array:status,jsonBody,body,headers,delay,abort,networkError,once',
             'response.status' => 'sometimes|integer|min:200|max:599',
             'response.jsonBody' => 'sometimes|string|json|max:100000',
             'response.body' => 'sometimes|string|max:100000',

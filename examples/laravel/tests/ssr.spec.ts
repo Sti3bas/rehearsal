@@ -20,6 +20,11 @@ for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
     }, path);
     expect(await fetchState("/state?preview=one")).toEqual({ status: 202, users: ["preview"] });
     expect(await fetchState("/state?preview=one")).toEqual({ status: 200, users: [name] });
+    await laravel.route("/probe/outside-db").respond({});
+    expect(await page.evaluate(async () => {
+      const response = await fetch("/probe/outside-db");
+      return { status: response.status, body: await response.text() };
+    })).toEqual({ status: 200, body: "" });
     await laravel.route("/probe/outside-db").respond({ networkError: true, once: true });
     await expect(page.evaluate(() => fetch("/probe/outside-db"))).rejects.toThrow();
     await laravel.route("/probe/redirect").fault({ status: 503, json: { unavailable: {} }, once: true });
