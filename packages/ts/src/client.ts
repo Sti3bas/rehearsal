@@ -58,8 +58,12 @@ export class Laravel {
   }
 
   typesense(): TypesenseClientConfig {
-    const scout = this.integrationMetadata("scout") as (TypesenseClientConfig & { engine: string }) | undefined;
-    if (scout?.engine !== "typesense") throw new Error("Rehearsal Typesense is not enabled.");
+    const scout = Object.values(this.metadata).find((value): value is TypesenseClientConfig => {
+      const candidate = value as (Partial<TypesenseClientConfig> & { engine?: unknown }) | null;
+      return candidate?.engine === "typesense" && typeof candidate.origin === "string"
+        && typeof candidate.collectionPrefix === "string" && typeof candidate.searchKey === "string";
+    });
+    if (!scout) throw new Error("Rehearsal Typesense is not enabled.");
     const { origin, collectionPrefix, searchKey } = scout;
     return { origin, collectionPrefix, searchKey };
   }
