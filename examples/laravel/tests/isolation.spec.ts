@@ -36,6 +36,11 @@ for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
       await writeFile(resolve(barrier, String(info.parallelIndex)), name);
       await expect.poll(async () => (await readdir(barrier)).length, { timeout: 15_000 }).toBe(4);
     }
+    const rateLimited = async () => (await page.request.get("/probe/rate-limit")).status();
+    expect(await rateLimited()).toBe(204);
+    expect(await rateLimited()).toBe(204);
+    expect(await rateLimited()).toBe(429);
+
     const final = await page.goto("/state");
     expect(await final?.json()).toMatchObject({ users: ["Baseline", name], user: name, cache: name, disk: name });
     await laravel.travel("2034-01-02T12:00:00.000Z");

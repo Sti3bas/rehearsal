@@ -52,6 +52,9 @@ final class ServiceProvider extends LaravelProvider
         if (in_array(Filesystem::class, config('rehearsal.integrations'), true)) {
             Filesystem::configureDisks($this->app->make(Run::class));
         }
+        if (in_array(LaravelState::class, config('rehearsal.integrations'), true)) {
+            LaravelState::configureRateLimiter($this->app);
+        }
         $control = static fn (Request $request) => app()->bound(Run::class) && $request->isMethod('POST')
             && $request->is('_rehearsal/start', '_rehearsal/call', '_rehearsal/login');
         TrimStrings::skipWhen($control);
