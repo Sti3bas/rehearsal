@@ -25,6 +25,7 @@ return [
     ],
     'disks' => ['local', 'public'],
     'factories' => [],
+    'operations' => [],
     'artisan' => [],
     'schedule' => [],
     'fault_paths' => [],

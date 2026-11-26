@@ -82,12 +82,26 @@ it('keeps control routes disabled by default', function () {
 it('protects control calls and fences markers when a test slot is reused', function () {
     $run = new Run(bin2hex(random_bytes(12)));
     $capability = bin2hex(random_bytes(32));
+    $handler = new class
+    {
+        public function __invoke(array $data): string
+        {
+            return strtoupper($data['title']);
+        }
+    };
+    $this->app->instance($handler::class, $handler);
     config([
         'rehearsal' => [
             'enabled' => true,
             'run' => $run->id,
             'capability' => $capability,
             'integrations' => [],
+            'operations' => [
+                'probe.title' => [
+                    'rules' => ['title' => 'required|string'],
+                    'handler' => $handler::class,
+                ],
+            ],
         ],
     ]);
     $this->app->register(ServiceProvider::class);
@@ -100,6 +114,13 @@ it('protects control calls and fences markers when a test slot is reused', funct
         $this->getJson('/probe')->assertForbidden();
         $headers = [Protocol::CAPABILITY => $capability];
         $first = $this->postJson('/_rehearsal/start', ['protocol' => 1, 'slot' => 2], $headers)->assertOk()->json('marker');
+        $controlHeaders = $headers + [Protocol::MARKER => $first];
+        $this->postJson('/_rehearsal/call', ['name' => 'probe.title', 'data' => ['title' => 'report']], $controlHeaders)
+            ->assertOk()->assertJson(['data' => 'REPORT']);
+        $this->postJson('/_rehearsal/call', ['name' => 'probe.title', 'data' => ['title' => ['invalid']]], $controlHeaders)
+            ->assertUnprocessable();
+        $this->postJson('/_rehearsal/call', ['name' => $handler::class, 'data' => ['title' => 'report']], $controlHeaders)
+            ->assertNotFound();
         $this->getJson('/probe', [Protocol::MARKER => $first])->assertOk()->assertJson(['slot' => 2]);
         $this->getJson('/_rehearsal/typesense', [Protocol::MARKER => $first])->assertNotFound();
         $this->postJson('/_rehearsal/login', ['id' => 1], $headers + [Protocol::MARKER => $first])->assertNotFound();

@@ -31,7 +31,7 @@ final class ServiceProvider extends LaravelProvider
         $path = __DIR__.'/../config/rehearsal.php';
         $this->mergeConfigFrom($path, 'rehearsal');
 
-        $this->app->singleton(Operations::class);
+        $this->app->singleton(Operations::class, fn () => new Operations(config('rehearsal.operations')));
         if (! $this->active()) {
             return;
         }

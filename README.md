@@ -323,6 +323,8 @@ if ($this->app->environment('playwright')) {
 await laravel.operation("reports.stage", { title: "April summary" });
 ```
 
+Alternatively, add `'reports.stage' => ['rules' => ['title' => 'required|string|max:100'], 'handler' => StageReport::class]` to `rehearsal.operations`. The package resolves the invokable class only when the operation is called and passes it the validated array. Both registration methods share the same operation names, so a name cannot be registered twice.
+
 For purpose-built Artisan wrappers, add aliases under `rehearsal.artisan` with a `command`, optional `fixed` arguments, and validation `rules` for arguments the caller may supply.
 
 ## SSR and split frontends

@@ -12,9 +12,11 @@ final class Operations
 {
     private array $entries = [];
 
+    public function __construct(private readonly array $configured = []) {}
+
     public function register(string $name, array $rules, Closure $handler): void
     {
-        if (isset($this->entries[$name])) {
+        if (isset($this->entries[$name]) || isset($this->configured[$name])) {
             throw new LogicException("Rehearsal operation [$name] is already registered.");
         }
 
@@ -23,6 +25,14 @@ final class Operations
 
     public function invoke(string $name, array $data): mixed
     {
+        if (isset($this->configured[$name])) {
+            $entry = $this->configured[$name];
+            $validated = Validator::validate($data, $entry['rules']);
+            $handler = app($entry['handler']);
+
+            return $handler($validated);
+        }
+
         abort_unless(isset($this->entries[$name]), 404, 'Rehearsal operation is not registered.');
         [$rules, $handler] = $this->entries[$name];
 
