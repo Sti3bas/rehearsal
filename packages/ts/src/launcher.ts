@@ -10,6 +10,8 @@ const root = process.cwd();
 const port = Number(process.argv[2]);
 const workers = Number(process.argv[3]);
 const host = process.argv[5] ?? "127.0.0.1";
+const environment = process.argv[6] ?? "playwright";
+if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(environment)) throw new Error("Invalid Rehearsal environment name.");
 const run = randomBytes(12).toString("hex");
 const capability = randomBytes(32).toString("hex");
 const launchPath = privateLaunchPath(root, port);
@@ -29,9 +31,8 @@ for (const [key, value] of Object.entries(process.env)) {
   }
 }
 Object.assign(env, {
-  APP_ENV: "playwright",
+  APP_ENV: environment,
   APP_URL: "http://" + host + ":" + port,
-  APP_DEBUG: "false",
   APP_CONFIG_CACHE: join(runPath, "config.php"),
   APP_ROUTES_CACHE: join(runPath, "routes.php"),
   APP_EVENTS_CACHE: join(runPath, "events.php"),
@@ -65,7 +66,7 @@ async function execute(command: string, args: string[]) {
 }
 
 function artisan(args: string[]) {
-  return execute("php", ["artisan", ...args, "--env=playwright", "--no-interaction"]);
+  return execute("php", ["artisan", ...args, "--env=" + environment, "--no-interaction"]);
 }
 
 const server = process.argv[4] ?? "artisan";
@@ -82,7 +83,7 @@ if (server !== "artisan") {
   if (!frankenphp && server === "frankenphp") throw new Error("FrankenPHP was not found on PATH.");
 }
 
-await access(join(root, ".env.playwright")).catch(() => {
+await access(join(root, ".env." + environment)).catch(() => {
   throw new Error("Run php artisan rehearsal:install before launching Rehearsal.");
 });
 await mkdir(join(root, ".rehearsal"), { mode: 0o700, recursive: true });

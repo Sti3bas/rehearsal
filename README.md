@@ -32,6 +32,10 @@ npx playwright install chromium
 
 The installer writes `.env.playwright` without overwriting an existing file. Ignore `.env.playwright` and `.rehearsal/`. SQLite is the default. Keep Laravel's migrations for the database-backed sessions, cache, and queues you use (including the failed-jobs table for queue drains).
 
+The PHP package allows only the `testing` environment by default. Set `rehearsal.environments` in your application's config or use the comma-separated `REHEARSAL_ENVIRONMENTS` variable. New installer-generated files opt in automatically; for an existing `.env.playwright`, add `REHEARSAL_ENVIRONMENTS=playwright` or configure the allowlist in your app. To use a different environment, run `php artisan rehearsal:install --environment=browser-tests` and set `laravelServer({ environment: "browser-tests" })`. The example app opts into `playwright` explicitly.
+
+To keep an app's existing config value instead of applying a Rehearsal default, set that dotted key to `null` in `rehearsal.safe_defaults`, for example `'safe_defaults' => ['cache.default' => null]`. Supported keys are `session.driver`, `cache.default`, `queue.default`, `mail.default`, `broadcasting.default`, `scout.driver`, and `app.debug`. Opt out only with disposable services or independently isolated state. Integrations may still set their own connection configuration when they bind an attempt.
+
 **`playwright.config.ts`**
 
 ```ts
@@ -370,7 +374,7 @@ The example Typesense container binds to loopback and allows browser requests on
 
 ## Security model
 
-Rehearsal is **test-only**. The bridge activates only in the `playwright` environment with valid managed run settings, and the managed launcher listens on loopback. Keep it off public networks and use disposable databases and service credentials. Never publish the launch record or `.env.playwright`.
+Rehearsal is **test-only**. The bridge activates only in an allowlisted environment with valid managed run settings, and the managed launcher listens on loopback. Keep it off public networks and use disposable databases and service credentials. Never publish the launch record or your test environment file.
 
 The browser's signed, HTTP-only cookie routes ordinary app requests to the test attempt. Cookies do not distinguish ports, so run only trusted loopback services on that host. The separate control capability is not sent in browser navigation or forwarded by SSR. Rehearsal does not expose arbitrary PHP, SQL, shell commands, or unrestricted Artisan execution.
 

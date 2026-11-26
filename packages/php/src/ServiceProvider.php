@@ -16,6 +16,16 @@ use Illuminate\Support\ServiceProvider as LaravelProvider;
 
 final class ServiceProvider extends LaravelProvider
 {
+    private const SAFE_DEFAULTS = [
+        'session.driver' => 'array',
+        'cache.default' => 'array',
+        'queue.default' => 'null',
+        'mail.default' => 'log',
+        'broadcasting.default' => 'log',
+        'scout.driver' => 'null',
+        'app.debug' => false,
+    ];
+
     public function register(): void
     {
         $path = __DIR__.'/../config/rehearsal.php';
@@ -27,16 +37,14 @@ final class ServiceProvider extends LaravelProvider
         }
 
         $this->app->instance(Run::class, new Run(config('rehearsal.run')));
-        config([
-            'database.default' => 'rehearsal_unbound',
-            'session.driver' => 'array',
-            'cache.default' => 'array',
-            'queue.default' => 'null',
-            'mail.default' => 'log',
-            'broadcasting.default' => 'log',
-            'scout.driver' => 'null',
-            'app.debug' => false,
-        ]);
+        config(['database.default' => 'rehearsal_unbound']);
+        $defaults = config('rehearsal.safe_defaults');
+        foreach (self::SAFE_DEFAULTS as $key => $default) {
+            $value = array_key_exists($key, $defaults) ? $defaults[$key] : $default;
+            if ($value !== null) {
+                config([$key => $value]);
+            }
+        }
         if (in_array(Database::class, config('rehearsal.integrations'), true)) {
             $this->app->singleton(Database::class);
             $this->app->make(Database::class)->isolateConnections();
@@ -53,7 +61,7 @@ final class ServiceProvider extends LaravelProvider
 
     public function boot(): void
     {
-        if ($this->app->environment('playwright') && config('rehearsal.reverb.server') === true && $this->app->runningInConsole()) {
+        if ($this->allowedEnvironment() && config('rehearsal.reverb.server') === true && $this->app->runningInConsole()) {
             ReverbApplications::register();
         }
         $this->publishes([__DIR__.'/../config/rehearsal.php' => config_path('rehearsal.php')], 'rehearsal-config');
@@ -79,11 +87,16 @@ final class ServiceProvider extends LaravelProvider
 
     private function active(): bool
     {
-        return $this->app->environment('playwright')
+        return $this->allowedEnvironment()
             && config('rehearsal.enabled') === true
             && is_string(config('rehearsal.run'))
             && preg_match('/\A[a-f0-9]{24}\z/', config('rehearsal.run'))
             && is_string(config('rehearsal.capability'))
             && preg_match('/\A[a-f0-9]{64}\z/', config('rehearsal.capability'));
+    }
+
+    private function allowedEnvironment(): bool
+    {
+        return in_array($this->app->environment(), config('rehearsal.environments'), true);
     }
 }

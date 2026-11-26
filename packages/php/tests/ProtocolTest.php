@@ -16,7 +16,6 @@ it('keeps control routes disabled by default', function () {
 });
 
 it('protects control calls and fences markers when a test slot is reused', function () {
-    $this->app->detectEnvironment(fn () => 'playwright');
     $run = new Run(bin2hex(random_bytes(12)));
     $capability = bin2hex(random_bytes(32));
     config([
@@ -47,4 +46,34 @@ it('protects control calls and fences markers when a test slot is reused', funct
     } finally {
         (new Filesystem)->deleteDirectory($run->path());
     }
+});
+
+it('requires an allowed environment even with valid managed settings', function () {
+    $this->app->detectEnvironment(fn () => 'browser-tests');
+    config([
+        'rehearsal.enabled' => true,
+        'rehearsal.run' => str_repeat('a', 24),
+        'rehearsal.capability' => str_repeat('b', 64),
+    ]);
+    $this->app->register(ServiceProvider::class);
+    $this->getJson('/_rehearsal/ready')->assertNotFound();
+});
+
+it('honors a custom environment and selective safe-default opt-outs', function () {
+    $this->app->detectEnvironment(fn () => 'browser-tests');
+    config([
+        'cache.default' => 'file',
+        'app.debug' => true,
+        'rehearsal.enabled' => true,
+        'rehearsal.run' => str_repeat('a', 24),
+        'rehearsal.capability' => str_repeat('b', 64),
+        'rehearsal.environments' => ['browser-tests'],
+        'rehearsal.integrations' => [],
+        'rehearsal.safe_defaults' => ['cache.default' => null],
+    ]);
+    $this->app->register(ServiceProvider::class);
+    expect($this->app->bound(Run::class))->toBeTrue()
+        ->and(config('cache.default'))->toBe('file')
+        ->and(config('queue.default'))->toBe('null')
+        ->and(config('app.debug'))->toBeFalse();
 });
