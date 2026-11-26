@@ -100,8 +100,10 @@ final class Scout implements Integration
             if ($engine === 'meilisearch') {
                 $configured = (array) config('scout.meilisearch.index-settings', []);
                 $logicalName = substr($name, strlen($this->prefix($attempt)));
-                $settings = $configured[$name] ?? $configured[$originalPrefix.$logicalName]
-                    ?? $configured[$logicalName] ?? $configured[$class] ?? [];
+                $settings = array_replace(
+                    $configured[$class] ?? [],
+                    $configured[$name] ?? $configured[$originalPrefix.$logicalName] ?? $configured[$logicalName] ?? [],
+                );
                 if (config('scout.soft_delete', false) && in_array(SoftDeletes::class, class_uses_recursive($model), true)
                     && ! in_array('__soft_deleted', $settings['filterableAttributes'] ?? [], true)) {
                     $settings['filterableAttributes'][] = '__soft_deleted';

@@ -30,6 +30,10 @@ final class ExampleProvider extends ServiceProvider
         if (config('rehearsal.scout.engine')) {
             if (config('rehearsal.scout.engine') === 'meilisearch') {
                 config([
+                    'scout.meilisearch.index-settings.'.User::class => [
+                        'filterableAttributes' => ['email'],
+                        'sortableAttributes' => ['name'],
+                    ],
                     'scout.meilisearch.index-settings.users' => ['filterableAttributes' => ['name']],
                     'scout.soft_delete' => true,
                 ]);
@@ -40,10 +44,13 @@ final class ExampleProvider extends ServiceProvider
             });
             $ops->register('probe.inbox', [], fn () => array_column(app(Mailpit::class)->messages(app(Attempt::class)), 'Subject'));
             $ops->register('probe.delete-user', ['id' => 'required|integer'], fn (array $data) => User::findOrFail($data['id'])->delete());
-            $ops->register('probe.search', ['name' => 'sometimes|string|max:100'], function (array $data): array {
+            $ops->register('probe.search', ['name' => 'sometimes|string|max:100', 'sort' => 'sometimes|boolean'], function (array $data): array {
                 $search = User::search('Probe');
                 if (isset($data['name'])) {
                     $search->where('name', $data['name']);
+                }
+                if ($data['sort'] ?? false) {
+                    $search->orderBy('name', 'desc');
                 }
 
                 return match (config('scout.driver')) {
