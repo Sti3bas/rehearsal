@@ -7,8 +7,10 @@ use Sti3bas\Rehearsal\LaravelState;
 
 return [
     'enabled' => env('REHEARSAL_ENABLED', false),
+    'environments' => array_values(array_filter(array_map('trim', explode(',', (string) env('REHEARSAL_ENVIRONMENTS', 'testing'))))),
     'run' => env('REHEARSAL_RUN'),
     'capability' => env('REHEARSAL_CAPABILITY'),
+    'safe_defaults' => [],
     'integrations' => [
         'database' => Database::class,
         'filesystem' => Filesystem::class,
@@ -22,12 +24,11 @@ return [
         'seeder' => null,
     ],
     'disks' => ['local', 'public'],
-    'factories' => [
-        'User' => ['model' => App\Models\User::class, 'states' => []],
-    ],
+    'factories' => [],
     'artisan' => [],
     'schedule' => [],
     'fault_paths' => [],
+    'route_mocks' => true,
     'login' => null,
     'mailpit' => ['api' => null, 'smtp_port' => 1025],
     'scout' => ['engine' => null, 'origin' => null, 'admin_key' => null, 'models' => [], 'baseline_models' => []],

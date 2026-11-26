@@ -16,7 +16,6 @@ it('keeps control routes disabled by default', function () {
 });
 
 it('protects control calls and fences markers when a test slot is reused', function () {
-    $this->app->detectEnvironment(fn () => 'playwright');
     $run = new Run(bin2hex(random_bytes(12)));
     $capability = bin2hex(random_bytes(32));
     config([
@@ -38,13 +37,49 @@ it('protects control calls and fences markers when a test slot is reused', funct
         $headers = [Protocol::CAPABILITY => $capability];
         $first = $this->postJson('/_rehearsal/start', ['protocol' => 1, 'slot' => 2], $headers)->assertOk()->json('marker');
         $this->getJson('/probe', [Protocol::MARKER => $first])->assertOk()->assertJson(['slot' => 2]);
+        $this->getJson('/_rehearsal/typesense', [Protocol::MARKER => $first])->assertNotFound();
+        $this->postJson('/_rehearsal/login', ['id' => 1], $headers + [Protocol::MARKER => $first])->assertNotFound();
         $second = $this->postJson('/_rehearsal/start', ['protocol' => 1, 'slot' => 2], $headers)->assertOk()->json('marker');
         expect($second)->not->toBe($first);
         $this->getJson('/probe', [Protocol::MARKER => $first])->assertStatus(409);
         $this->getJson('/probe', [Protocol::MARKER => $second])->assertOk()->assertJson(['slot' => 2]);
         $this->postJson('/_rehearsal/call', ['name' => 'arbitrary', 'data' => []], [Protocol::MARKER => $second])
             ->assertUnauthorized();
+        unlink($run->path('slot-2.attempt'));
+        $this->getJson('/probe', [Protocol::MARKER => $second])->assertStatus(409);
     } finally {
         (new Filesystem)->deleteDirectory($run->path());
     }
+});
+
+it('requires an allowed environment even with valid managed settings', function () {
+    $this->app->detectEnvironment(fn () => 'browser-tests');
+    config([
+        'rehearsal.enabled' => true,
+        'rehearsal.run' => str_repeat('a', 24),
+        'rehearsal.capability' => str_repeat('b', 64),
+    ]);
+    $this->app->register(ServiceProvider::class);
+    $this->getJson('/_rehearsal/ready')->assertNotFound();
+});
+
+it('honors a custom environment and selective safe-default opt-outs', function () {
+    $this->app->detectEnvironment(fn () => 'browser-tests');
+    config([
+        'cache.default' => 'file',
+        'app.debug' => true,
+        'rehearsal.enabled' => true,
+        'rehearsal.run' => str_repeat('a', 24),
+        'rehearsal.capability' => str_repeat('b', 64),
+        'rehearsal.environments' => ['browser-tests'],
+        'rehearsal.integrations' => [],
+        'rehearsal.safe_defaults' => ['cache.default' => null],
+        'rehearsal.route_mocks' => false,
+    ]);
+    $this->app->register(ServiceProvider::class);
+    expect($this->app->bound(Run::class))->toBeTrue()
+        ->and(collect(app('router')->getRoutes())->contains(fn ($route) => $route->uri() === '_rehearsal/route-mock'))->toBeFalse()
+        ->and(config('cache.default'))->toBe('file')
+        ->and(config('queue.default'))->toBe('null')
+        ->and(config('app.debug'))->toBeFalse();
 });

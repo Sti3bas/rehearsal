@@ -14,6 +14,7 @@ final class RouteMocks
 {
     public static function register(Attempt $attempt, array $input, bool $fault): void
     {
+        abort_if(! $fault && config('rehearsal.route_mocks') !== true, 404);
         abort_if(strlen(json_encode($input, JSON_THROW_ON_ERROR)) > 128_000, 422);
         $data = Validator::validate($input, [
             'path' => ['required', 'string', 'max:1024', 'starts_with:/', 'not_regex:/^\/\//'],
@@ -56,6 +57,9 @@ final class RouteMocks
 
     public static function fault(Attempt $attempt, Request $request): ?Response
     {
+        if (! is_file($attempt->path('route-faults.json'))) {
+            return null;
+        }
         $rule = self::claim($attempt, $request->method(), $request->getRequestUri(), true);
         if ($rule === null) {
             return null;

@@ -77,7 +77,7 @@ final readonly class Protocol
     public function assertCurrent(Attempt $attempt): void
     {
         $state = $this->run->path('slot-'.$attempt->slot.'.attempt');
-        abort_unless(is_file($state) && file_get_contents($state) === $attempt->id, 409, 'Rehearsal attempt is no longer active.');
+        abort_unless(@file_get_contents($state) === $attempt->id, 409, 'Rehearsal attempt is no longer active.');
     }
 
     public function cleanup(): void

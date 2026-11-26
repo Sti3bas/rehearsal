@@ -14,6 +14,7 @@ $engine = env('REHEARSAL_INTEGRATION_SCOUT');
 $serviceHost = env('REHEARSAL_INTEGRATION_SERVICE_HOST', '127.0.0.1');
 
 return [
+    'environments' => ['playwright'],
     'integrations' => [
         'database' => Database::class,
         'filesystem' => Filesystem::class,
@@ -45,4 +46,5 @@ return [
         'fail-probe' => ['command' => 'probe:schedule', 'fixed' => ['--fail' => true]],
     ],
     'fault_paths' => ['/probe/redirect'],
+    'route_mocks' => true,
 ];

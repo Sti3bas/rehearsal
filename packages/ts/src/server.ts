@@ -7,6 +7,7 @@ interface ServerOptions {
   cwd?: string;
   server?: "artisan" | "frankenphp" | "auto";
   phpWorkers?: number;
+  environment?: string;
   database?: Record<string, string>;
   integrations?: Record<`REHEARSAL_INTEGRATION_${string}`, string>;
 }
@@ -15,17 +16,21 @@ function quote(value: string) {
   return "'" + value.replaceAll("'", "'\\''") + "'";
 }
 
-export function laravelServer({ port = 8100, host = "127.0.0.1", cwd = process.cwd(), server = "artisan", phpWorkers = 8, database = {}, integrations = {} }: ServerOptions = {}) {
+export function laravelServer({ port = 8100, host = "127.0.0.1", cwd = process.cwd(), server = "artisan", phpWorkers = 8, environment = "playwright", database = {}, integrations = {} }: ServerOptions = {}) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535 || !Number.isInteger(phpWorkers) || phpWorkers < 2 || phpWorkers > 64) {
     throw new Error("Invalid Rehearsal port or PHP worker count.");
   }
   if (host !== "127.0.0.1" && host !== "localhost") throw new Error("Invalid Rehearsal loopback host.");
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(environment)) throw new Error("Invalid Rehearsal environment name.");
   const script = fileURLToPath(new URL("./launcher.js", import.meta.url));
   return {
     command: [process.execPath, script, String(port), String(phpWorkers), server, host].map(quote).join(" "),
     cwd: resolve(cwd),
-    env: Object.fromEntries([...Object.entries(database), ...Object.entries(integrations)]
-      .map(([name, value]) => ["REHEARSAL_MANAGED_" + name, value])),
+    env: {
+      ...Object.fromEntries([...Object.entries(database), ...Object.entries(integrations)]
+        .map(([name, value]) => ["REHEARSAL_MANAGED_" + name, value])),
+      REHEARSAL_MANAGED_APP_ENV: environment,
+    },
     url: "http://" + host + ":" + port + "/_rehearsal/ready",
     timeout: 120_000,
     reuseExistingServer: false,

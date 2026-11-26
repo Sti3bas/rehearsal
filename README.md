@@ -32,6 +32,10 @@ npx playwright install chromium
 
 The installer writes `.env.playwright` without overwriting an existing file. Ignore `.env.playwright` and `.rehearsal/`. SQLite is the default. Keep Laravel's migrations for the database-backed sessions, cache, and queues you use (including the failed-jobs table for queue drains).
 
+The PHP package allows only the `testing` environment by default. Set `rehearsal.environments` in your application's config or use the comma-separated `REHEARSAL_ENVIRONMENTS` variable. New installer-generated files opt in automatically; for an existing `.env.playwright`, add `REHEARSAL_ENVIRONMENTS=playwright` or configure the allowlist in your app. To use a different environment, run `php artisan rehearsal:install --environment=browser-tests` and set `laravelServer({ environment: "browser-tests" })`. The example app opts into `playwright` explicitly.
+
+To keep an app's existing config value instead of applying a Rehearsal default, set that dotted key to `null` in `rehearsal.safe_defaults`, for example `'safe_defaults' => ['cache.default' => null]`. Supported keys are `session.driver`, `cache.default`, `queue.default`, `mail.default`, `broadcasting.default`, `scout.driver`, and `app.debug`. Integrations still take ownership of their drivers when they bind an attempt: for example, set `'laravel-state' => false` in `rehearsal.integrations` if the app supplies its own session, cache, and queue isolation, or register a custom integration instead. Opt out only with disposable services or independently isolated state.
+
 **`playwright.config.ts`**
 
 ```ts
@@ -88,6 +92,8 @@ await laravel.route(listings.show({ listing: slug })).respond({ status: 404, onc
 Pass a URL at the Laravel origin, a path (with `*` for a segment or `**` across segments), or a Wayfinder object or route function and its parameters. Wayfinder objects also match the HTTP method. Supports JSON, text bodies, headers, status, delays (milliseconds), browser aborts and network errors. If a pattern includes a query string it is matched; otherwise queries are ignored. Newest matching registration wins; `once` is shared between browser and SSR, including across browser contexts bound to the attempt. The Nuxt module uses MSW for fetches using `useRehearsalFetch()` in forwarding mode. Browser routes apply only to Playwright contexts bound to the attempt and HTTP requests to Laravel, not third-party assets.
 
 For traffic that must actually reach Laravel, allowlist paths or glob patterns in `rehearsal.fault_paths`, then use `await laravel.route("/api/listings/**").fault({ status: 503, once: true })`. A delay without a response lets the real route run afterward. A headers-only fault returns an empty HTTP 200 with those headers instead of running the route. Each attempt starts with no rules.
+
+Set `rehearsal.route_mocks` to `false` to disable browser and SSR response mocks and their resolution route. Real-server faults have a separate allowlist. The browser login route is only installed when login is configured, and the Typesense credential route is only installed when the Scout integration is configured for Typesense.
 
 #### Fake outbound Laravel HTTP
 
@@ -370,7 +376,7 @@ The example Typesense container binds to loopback and allows browser requests on
 
 ## Security model
 
-Rehearsal is **test-only**. The bridge activates only in the `playwright` environment with valid managed run settings, and the managed launcher listens on loopback. Keep it off public networks and use disposable databases and service credentials. Never publish the launch record or `.env.playwright`.
+Rehearsal is **test-only**. The bridge activates only in an allowlisted environment with valid managed run settings, and the managed launcher listens on loopback. Keep it off public networks and use disposable databases and service credentials. Never publish the launch record or your test environment file.
 
 The browser's signed, HTTP-only cookie routes ordinary app requests to the test attempt. Cookies do not distinguish ports, so run only trusted loopback services on that host. The separate control capability is not sent in browser navigation or forwarded by SSR. Rehearsal does not expose arbitrary PHP, SQL, shell commands, or unrestricted Artisan execution.
 
