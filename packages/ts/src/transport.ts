@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 export const protocol = 1;
 export const markerHeader = "X-Rehearsal-Attempt";
+export const markerCookie = "rehearsal_attempt";
 export const capabilityHeader = "X-Rehearsal-Capability";
 
 export function privateLaunchPath(root: string, port: number) {

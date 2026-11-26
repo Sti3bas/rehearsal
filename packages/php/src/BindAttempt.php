@@ -24,7 +24,7 @@ final readonly class BindAttempt
             return $next($request);
         }
 
-        $attempt = $this->protocol->resolve($request->header(Protocol::MARKER, ''));
+        $attempt = $this->protocol->resolve($request->header(Protocol::MARKER, $request->cookies->get(Protocol::MARKER_COOKIE, '')));
 
         $lease = $attempt->run->acquire('slot-'.$attempt->slot, LOCK_SH);
         try {

@@ -1,5 +1,5 @@
 import type { APIRequestContext, BrowserContext, Page } from "@playwright/test";
-import { capabilityHeader, markerHeader, protocol } from "./transport.js";
+import { capabilityHeader, loopback, markerCookie, markerHeader, protocol } from "./transport.js";
 
 export interface FactoryDefinition {
   model: string;
@@ -29,15 +29,15 @@ export class Laravel {
   ) {}
 
   async bindContext(context: BrowserContext) {
+    const origins = [new URL(this.origin), new URL(this.frontendOrigin)];
+    if (!origins.every(loopback)) {
+      throw new Error("Rehearsal attempt cookies require loopback origins.");
+    }
+    const hosts = new Map(origins.map((url) => [url.hostname, url.origin]));
+    await context.addCookies([...hosts.values()].map((origin) => ({
+      name: markerCookie, value: this.marker, url: origin + "/", httpOnly: true, sameSite: "Lax",
+    })));
     this.context ??= context;
-    const origins = new Set([this.origin, this.frontendOrigin]);
-    await context.route((url) => origins.has(url.origin), async (route) => {
-      const response = await route.fetch({
-        headers: { ...route.request().headers(), [markerHeader]: this.marker },
-        maxRedirects: 0,
-      });
-      await route.fulfill({ response });
-    });
   }
 
   async preparePage(page: Page) {

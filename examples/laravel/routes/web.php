@@ -7,6 +7,11 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 
 Route::get('/', fn () => response('Rehearsal'));
+Route::get('/probe/redirect', fn () => redirect('/state'));
+Route::get('/probe/events', fn () => response()->eventStream(function () {
+    yield new \Illuminate\Http\StreamedEvent(event: 'probe', data: 'ready');
+    sleep(4);
+}));
 Route::get('/state', fn () => [
     'users' => User::query()->orderBy('id')->pluck('name'),
     'user' => Auth::user()?->name,
