@@ -1,4 +1,5 @@
 import type { APIRequestContext, BrowserContext, Page } from "@playwright/test";
+import { Mailbox } from "./mail.js";
 import { capabilityHeader, loopback, markerCookie, markerHeader, protocol } from "./transport.js";
 import { claimRoute, matchesRoute, mockResponse, routePattern, type RouteResponse, type RouteTarget } from "./routes.js";
 
@@ -35,6 +36,10 @@ export class Laravel {
 
   integrationMetadata(name: string): unknown {
     return Object.hasOwn(this.metadata, name) ? this.metadata[name] : undefined;
+  }
+
+  mailbox(recipient: string) {
+    return new Mailbox(this, recipient);
   }
 
   async bindContext(context: BrowserContext) {

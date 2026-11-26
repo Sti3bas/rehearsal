@@ -49,6 +49,7 @@ final readonly class Control
             'route.fault' => RouteMocks::register($attempt, $data, true),
             'reverb.subscribed' => app(Reverb::class)->subscribed($data),
             'reverb.broadcast' => app(Reverb::class)->broadcast($data),
+            'mail.inbox' => app(Mailpit::class)->mailbox($attempt, $data),
             default => $this->operations->invoke($input['name'], $data),
         };
 

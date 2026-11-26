@@ -9,6 +9,7 @@ use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Validator;
 use RuntimeException;
 
 final class Mailpit implements Integration
@@ -61,6 +62,32 @@ final class Mailpit implements Integration
     public function messages(Attempt $attempt): array
     {
         return $this->search(self::tag($attempt));
+    }
+
+    public function mailbox(Attempt $attempt, array $input): array
+    {
+        abort_unless(in_array(self::class, config('rehearsal.integrations'), true), 404, 'Rehearsal Mailpit is not enabled.');
+        $data = Validator::validate($input, [
+            'recipient' => 'required|email|max:254',
+            'id' => ['sometimes', 'string', 'max:80', 'regex:/\A[a-zA-Z0-9-]+\z/'],
+        ]);
+        $messages = [];
+        foreach ($this->messages($attempt) as $message) {
+            $addresses = array_merge($message['To'] ?? [], $message['Cc'] ?? [], $message['Bcc'] ?? []);
+            if (! in_array(strtolower($data['recipient']), array_map('strtolower', array_column($addresses, 'Address')), true)) {
+                continue;
+            }
+            $summary = ['id' => $message['ID'], 'subject' => $message['Subject']];
+            if (($data['id'] ?? null) === $summary['id']) {
+                $detail = $this->api()->get('/api/v1/message/'.$summary['id'])->throw()->json();
+
+                return $summary + ['html' => $detail['HTML'] ?? '', 'text' => $detail['Text'] ?? ''];
+            }
+            $messages[] = $summary;
+        }
+        abort_if(isset($data['id']), 404);
+
+        return $messages;
     }
 
     private static function tag(Attempt $attempt): string

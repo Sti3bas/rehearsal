@@ -106,7 +106,7 @@ The lifecycle is **provision → reset → bind requests → cleanup**. Rehearsa
 | Filesystem | Local and public disks are isolated by default. Set `disks` to select others. Use the disk's generated `url()` or `temporaryUrl()`, not hardcoded `/storage/…` links. |
 | Cache, session, queue | Uses the slot database. Keeps the configured database queue and table names. |
 | Clock | Per-attempt Laravel clock and Playwright page clock through `laravel.travel()`. |
-| Mail / Mailpit | Mail logs by default. Opt in to Mailpit to inspect attempt-tagged inboxes via `Mailpit::messages($attempt)` in a named operation. |
+| Mail / Mailpit | Mail logs by default. Opt in to Mailpit to inspect attempt-tagged inboxes with `laravel.mailbox(recipient)`. |
 | Scout | Database search uses the slot DB. Meilisearch and Typesense use a scoped key and per-slot index names; reset clears documents without rebuilding the indexes. |
 | Reverb | Each attempt has its own Reverb application, so workers can reuse channel names. Only the public browser config is injected. |
 
@@ -162,6 +162,17 @@ await expect(page.getByText("Listing updated")).toBeVisible();
 ```
 
 Both helpers use the exact wire channel and event names. Use `await reverb.subscribed(channel)` for a non-polling occupancy check. Assert frontend behavior to verify delivery; the publisher can only report whether Reverb accepted the event.
+
+Read rendered mail from the current attempt without replacing the application's mailer with an assertion fake:
+
+```ts
+const inbox = laravel.mailbox("buyer@example.test");
+await inbox.expectReceived(/verify/i);
+const verifyURL = await inbox.link("Verify address", { subject: /verify/i });
+await page.goto(verifyURL);
+```
+
+`inbox.latest({ subject })` waits for a matching message and returns its HTML and text. `inbox.all()` lists the recent summaries without waiting.
 
 See [the working example config](examples/laravel/config/rehearsal.php) and [disposable services](examples/laravel/compose.integrations.yml).
 
