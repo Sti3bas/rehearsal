@@ -30,6 +30,6 @@ return [
     'fault_paths' => [],
     'login' => null,
     'mailpit' => ['api' => null, 'smtp_port' => 1025],
-    'scout' => ['engine' => null, 'origin' => null, 'admin_key' => null, 'models' => []],
+    'scout' => ['engine' => null, 'origin' => null, 'admin_key' => null, 'models' => [], 'baseline_models' => []],
     'reverb' => ['origin' => null, 'server' => env('REHEARSAL_REVERB_SERVER', false)],
 ];

@@ -18,6 +18,11 @@ return new class extends Migration
             $table->timestamps();
             $table->softDeletes();
         });
+        Schema::create('categories', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+        });
+        DB::table('categories')->insert(['name' => 'Baseline category']);
         Schema::create('sessions', function (Blueprint $table): void {
             $table->string('id')->primary();
             $table->foreignId('user_id')->nullable()->index();

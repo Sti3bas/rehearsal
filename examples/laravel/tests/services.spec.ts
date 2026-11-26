@@ -1,6 +1,18 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { expect, test } from "@sti3bas/rehearsal";
+import type { Page } from "@playwright/test";
+import { expect, test, type TypesenseClientConfig } from "@sti3bas/rehearsal";
+
+function browserSearch(page: Page, config: TypesenseClientConfig, collection = config.collectionPrefix + "users") {
+  return page.evaluate(async ({ origin, searchKey, collection, collectionPrefix }) => {
+    const query = new URLSearchParams({ q: "*", query_by: "name", filter_by: `$${collectionPrefix}categories(name:="Baseline category")` });
+    const response = await fetch(`${origin}/collections/${collection}/documents/search?${query}`, {
+      headers: { "X-TYPESENSE-API-KEY": searchKey },
+    });
+    const hits = response.ok ? (await response.json()).hits.map((hit: { document: { name: string } }) => hit.document.name).sort() : [];
+    return { status: response.status, hits };
+  }, { ...config, collection });
+}
 
 test("sends mail over IPv6 loopback", async ({ laravel }) => {
   test.skip(process.env.REHEARSAL_E2E_SERVICE_HOST !== "[::1]", "IPv6-specific SMTP regression.");
@@ -9,7 +21,7 @@ test("sends mail over IPv6 loopback", async ({ laravel }) => {
 });
 
 for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
-  test("isolates Scout and Mailpit for " + name, async ({ laravel }, info) => {
+  test("isolates Scout and Mailpit for " + name, async ({ laravel, page }, info) => {
     const title = "Probe " + name;
     const inbox = laravel.mailbox("receiver@example.test");
     expect(await laravel.operation("probe.search")).toEqual([]);
@@ -25,21 +37,51 @@ for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
     expect(await inbox.all()).toEqual([{ id: expect.any(String), subject: title }]);
     expect(await inbox.link(/verify address/i, { subject: /^Probe / })).toBe("https://example.test/verify?a=1&b=2");
     expect(await laravel.mailbox("other@example.test").all()).toEqual([]);
+    if (process.env.REHEARSAL_E2E_SCOUT === "typesense") {
+      const typesense = laravel.typesense();
+      await page.goto("/");
+      await expect(browserSearch(page, typesense)).resolves.toEqual({ status: 200, hits: ["Baseline", title] });
+      const nextSlot = (info.parallelIndex + 1) % 4 + 1;
+      const otherCollection = typesense.collectionPrefix.replace(/_s\d+_$/, `_s${nextSlot}_`) + "users";
+      await expect(browserSearch(page, typesense, otherCollection)).resolves.toEqual({ status: 401, hits: [] });
+      const writeStatus = await page.evaluate(async ({ origin, collectionPrefix, searchKey }) => {
+        const response = await fetch(`${origin}/collections/${collectionPrefix}users/documents`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-TYPESENSE-API-KEY": searchKey },
+          body: JSON.stringify({ id: "forbidden", name: "Forbidden" }),
+        });
+        return response.status;
+      }, typesense);
+      expect(writeStatus).toBe(401);
+    }
   });
 }
 
 test.describe("slot reuse", () => {
   test.describe.configure({ mode: "serial" });
-  test("fills search and mail before reset", async ({ laravel }) => {
+  let previousTypesense: TypesenseClientConfig | undefined;
+  test("fills search and mail before reset", async ({ laravel, page }) => {
     await laravel.factory("User", { name: "Probe stale" });
     await laravel.operation("probe.mail", { title: "Probe stale" });
     await expect.poll(() => laravel.operation("probe.search")).toEqual(["Probe stale"]);
     await laravel.mailbox("receiver@example.test").expectReceived("Probe stale");
+    if (process.env.REHEARSAL_E2E_SCOUT === "typesense") {
+      previousTypesense = laravel.typesense();
+      await page.goto("/");
+      await expect(browserSearch(page, previousTypesense)).resolves.toEqual({ status: 200, hits: ["Baseline", "Probe stale"] });
+    }
   });
 
-  test("empties search and mail between attempts", async ({ laravel }) => {
+  test("empties search and mail between attempts", async ({ laravel, page }) => {
     expect(await laravel.operation("probe.search")).toEqual([]);
     expect(await laravel.mailbox("receiver@example.test").all()).toEqual([]);
+    if (previousTypesense) {
+      const typesense = laravel.typesense();
+      expect(typesense.collectionPrefix).toBe(previousTypesense.collectionPrefix);
+      await page.goto("/");
+      await expect(browserSearch(page, typesense)).resolves.toEqual({ status: 200, hits: ["Baseline"] });
+      await expect(browserSearch(page, previousTypesense)).resolves.toEqual({ status: 401, hits: [] });
+    }
   });
 });
 

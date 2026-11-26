@@ -13,7 +13,7 @@ use Laravel\Scout\EngineManager;
 use Meilisearch\Client;
 use RuntimeException;
 
-final class Scout implements Integration
+final class Scout implements Integration, ClientMetadata
 {
     public function provision(Run $run): void
     {
@@ -61,13 +61,19 @@ final class Scout implements Integration
         $path = $attempt->path('scout.json');
         $state = $this->read($path);
         if (isset($state['key']['value'])) {
-            foreach ($state['indexes'] as $name) {
+            if ($engine === 'typesense') {
+                $this->deleteKey($state['searchKey']['id'] ?? null, false);
+            }
+            foreach (array_reverse($state['indexes']) as $name) {
                 $this->owned($attempt->run, $name);
                 if ($engine === 'meilisearch') {
                     $this->wait($this->api()->delete('/indexes/'.$name.'/documents')->throw());
                 } else {
                     $this->api()->delete('/collections/'.$name.'/documents?truncate=true')->throw();
                 }
+            }
+            if ($engine === 'typesense') {
+                $this->resetTypesense($attempt, $path, $state);
             }
 
             return;
@@ -81,6 +87,7 @@ final class Scout implements Integration
             throw new RuntimeException('Rehearsal Scout requires an explicit list of searchable models.');
         }
         $state = ['indexes' => []];
+        $names = [];
         foreach ($models as $class) {
             $model = new $class;
             $name = $model->searchableAs();
@@ -91,8 +98,19 @@ final class Scout implements Integration
             if ($engine === 'meilisearch') {
                 $this->wait($this->api()->post('/indexes', ['uid' => $name, 'primaryKey' => $model->getScoutKeyName()])->throw());
             } else {
+                $logicalName = substr($name, strlen($this->prefix($attempt)));
+                $names[$logicalName] = $names[$originalPrefix.$logicalName] = $names[$name] = $name;
                 $schema = method_exists($model, 'typesenseCollectionSchema') ? $model->typesenseCollectionSchema()
                     : config('scout.typesense.model-settings.'.$class.'.collection-schema', []);
+                foreach ($schema['fields'] ?? [] as $i => $field) {
+                    if (isset($field['reference'])) {
+                        [$collection, $column] = explode('.', $field['reference'], 2) + [1 => null];
+                        if (! isset($names[$collection]) || ! $column) {
+                            throw new RuntimeException('Typesense references must target another configured slot collection.');
+                        }
+                        $schema['fields'][$i]['reference'] = $names[$collection].'.'.$column;
+                    }
+                }
                 $this->api()->post('/collections', ['name' => $name] + $schema)->throw();
             }
             $state['indexes'][] = $name;
@@ -124,6 +142,51 @@ final class Scout implements Integration
                 'collections' => $state['indexes'],
             ])->throw()->json();
         $state['key'] = ['id' => $key['uid'] ?? $key['id'], 'value' => $key['key'] ?? $key['value']];
+        $this->write($path, $state);
+        if ($engine === 'typesense') {
+            $this->resetTypesense($attempt, $path, $state);
+        }
+    }
+
+    public function clientMetadata(Attempt $attempt): array
+    {
+        if ($this->engine() !== 'typesense') {
+            return [];
+        }
+
+        return [
+            'engine' => 'typesense',
+            'origin' => config('rehearsal.scout.origin'),
+            'collectionPrefix' => $this->prefix($attempt),
+            'searchKey' => $this->read($attempt->path('scout.json'))['searchKey']['value'],
+        ];
+    }
+
+    private function resetTypesense(Attempt $attempt, string $path, array $state): void
+    {
+        $baseline = config('rehearsal.scout.baseline_models', []);
+        $models = config('rehearsal.scout.models', []);
+        if (! is_array($baseline) || array_diff($baseline, $models)) {
+            throw new RuntimeException('Typesense baseline models must be included in the configured Scout models.');
+        }
+        if ($baseline !== []) {
+            $integrations = array_values(config('rehearsal.integrations'));
+            $beforeScout = array_slice($integrations, 0, (int) array_search(self::class, $integrations, true));
+            if (! in_array(Database::class, $beforeScout, true)) {
+                throw new RuntimeException('Typesense baseline import requires the Rehearsal database integration before Scout.');
+            }
+            app(Database::class)->bind($attempt);
+            $this->bind($attempt);
+            foreach (array_intersect($models, $baseline) as $class) {
+                $class::makeAllSearchable();
+            }
+        }
+        $key = $this->api()->post('/keys', [
+            'description' => $this->prefix($attempt).$attempt->id,
+            'actions' => ['documents:search'],
+            'collections' => $state['indexes'],
+        ])->throw()->json();
+        $state['searchKey'] = ['id' => $key['id'], 'value' => $key['value']];
         $this->write($path, $state);
     }
 
@@ -197,17 +260,9 @@ final class Scout implements Integration
     {
         $state = $this->read($path);
         $meili = $this->engine() === 'meilisearch';
-        if (isset($state['key']['id'])) {
-            $id = $state['key']['id'];
-            if ($meili ? ! Str::isUuid($id) : (! is_int($id) || $id < 0)) {
-                throw new RuntimeException('Invalid Rehearsal Scout key ownership record.');
-            }
-            $response = $this->api()->delete('/keys/'.$id);
-            if ($response->status() !== 404) {
-                $response->throw();
-            }
-        }
-        foreach ($state['indexes'] as $name) {
+        $this->deleteKey($state['searchKey']['id'] ?? null, false);
+        $this->deleteKey($state['key']['id'] ?? null, $meili);
+        foreach (array_reverse($state['indexes']) as $name) {
             $this->owned($run, $name);
             $response = $this->api()->delete(($meili ? '/indexes/' : '/collections/').$name);
             if ($response->status() !== 404) {
@@ -218,6 +273,20 @@ final class Scout implements Integration
             }
         }
         unlink($path);
+    }
+
+    private function deleteKey(mixed $id, bool $meili): void
+    {
+        if ($id === null) {
+            return;
+        }
+        if ($meili ? ! Str::isUuid($id) : (! is_int($id) || $id < 0)) {
+            throw new RuntimeException('Invalid Rehearsal Scout key ownership record.');
+        }
+        $response = $this->api()->delete('/keys/'.$id);
+        if ($response->status() !== 404) {
+            $response->throw();
+        }
     }
 
     private function wait(Response $response, bool $allowMissing = false): void

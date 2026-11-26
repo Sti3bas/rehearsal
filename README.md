@@ -170,6 +170,7 @@ Add entries to the **existing** `integrations` array in the published config, ke
     'origin' => 'http://127.0.0.1:8108',
     'admin_key' => env('REHEARSAL_SCOUT_ADMIN_KEY'),
     'models' => [\App\Models\User::class],
+    'baseline_models' => [\App\Models\User::class], // optional, Typesense only
 ],
 'reverb' => [
     'origin' => 'http://127.0.0.1:18080',
@@ -177,9 +178,13 @@ Add entries to the **existing** `integrations` array in the published config, ke
 ],
 ```
 
-- **Scout:** Custom search/index names must honor `scout.prefix`. For remote engines, list the searchable models and configure their index/collection schema as you normally would. Remote indexes start empty; index baseline records in a named operation if a test needs them. The database engine needs no search container or admin key.
+- **Scout:** Custom search/index names must honor `scout.prefix`. For remote engines, list the searchable models and configure their schemas as you normally would. The database engine needs no search container or admin key.
 - **Mailpit:** The integration configures the default test mailer. Explicit app-specific mailers should never point at live SMTP during a test.
 - **Reverb:** Run a separate daemon from the same checkout with `APP_ENV=playwright REHEARSAL_REVERB_SERVER=true php artisan reverb:start --host=127.0.0.1 --port=18080`. Import `reverbTest as test` in browser specs and configure your Echo client with the `key`, `host`, and `port` from `globalThis.__REHEARSAL_REVERB__` before it starts. The publisher secret stays server-side.
+
+**Typesense baselines and browser search.** Seed the database baseline as usual (for example, with `rehearsal.database.seeder`), put Scout after Database in `integrations`, and list the models to reimport under `scout.baseline_models`. Rehearsal imports those models from the restored slot DB with Scout on every attempt. Without that list, collections start empty. Define schemas under Laravel Scout's `scout.typesense.model-settings.<model>.collection-schema` or via `typesenseCollectionSchema()`. For schemas with `reference` fields, list the referenced models before their dependents in `models`; Rehearsal retargets those references to the slot's collections.
+
+Pass `laravel.typesense()` to your browser's test setup to configure direct Typesense search. It returns `{ origin, collectionPrefix, searchKey }`. Use the prefix with the model's collection suffix (for example, `${collectionPrefix}users`) and send the key as `X-TYPESENSE-API-KEY`. Enable CORS on the disposable Typesense server for browser access. The key permits only document searches in the slot's collections and is revoked at the next reset or at teardown; admin and backend write keys stay server-side.
 
 After loading your frontend, wait for Echo to join and then publish on the attempt's real Reverb application:
 

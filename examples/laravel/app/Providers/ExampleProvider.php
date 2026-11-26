@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Jobs\WriteProbe;
+use App\Models\Category;
 use App\Models\User;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
@@ -37,6 +38,20 @@ final class ExampleProvider extends ServiceProvider
                     ],
                     'scout.meilisearch.index-settings.users' => ['filterableAttributes' => ['name']],
                     'scout.soft_delete' => true,
+                ]);
+            }
+            if (config('rehearsal.scout.engine') === 'typesense') {
+                config([
+                    'scout.prefix' => 'example_',
+                    'scout.typesense.model-settings.'.Category::class.'.collection-schema' => [
+                        'fields' => [['name' => 'name', 'type' => 'string']],
+                    ],
+                    'scout.typesense.model-settings.'.User::class.'.collection-schema' => [
+                        'fields' => [
+                            ['name' => 'name', 'type' => 'string'],
+                            ['name' => 'category_id', 'type' => 'string', 'reference' => 'example_categories.id'],
+                        ],
+                    ],
                 ]);
             }
             $ops = $this->app->make(Operations::class);
