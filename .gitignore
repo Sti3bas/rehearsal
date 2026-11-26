@@ -1,0 +1,11 @@
+vendor/
+node_modules/
+.nuxt/
+dist/
+test-results/
+playwright-report/
+.phpunit.cache/
+composer.lock
+.env
+.env.playwright
+.rehearsal/

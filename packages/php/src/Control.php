@@ -1,0 +1,156 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Sti3bas\Rehearsal;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
+
+final readonly class Control
+{
+    public function __construct(private Protocol $protocol, private Operations $operations) {}
+
+    public function ready(): JsonResponse
+    {
+        abort_unless(is_file($this->protocol->run->path('ready')), 503);
+
+        return response()->json(['protocol' => Protocol::VERSION, 'run' => $this->protocol->run->id]);
+    }
+
+    public function start(Request $request): JsonResponse
+    {
+        $this->protocol->authorize($request);
+        $data = $request->validate([
+            'slot' => ['required', 'integer', 'min:1', 'max:'.Run::MAX_SLOTS],
+            'protocol' => ['required', 'integer', Rule::in([Protocol::VERSION])],
+        ]);
+
+        return response()->json($this->protocol->begin((int) $data['slot']));
+    }
+
+    public function call(Request $request, Attempt $attempt): JsonResponse
+    {
+        $this->protocol->authorize($request);
+        $input = $request->validate(['name' => 'required|string|max:100', 'data' => 'present|array']);
+        $data = $input['data'];
+        $result = match ($input['name']) {
+            'factory' => $this->factory($data),
+            'travel' => $this->travel($attempt, $data),
+            'artisan' => $this->artisan($data),
+            'queue.drain' => $this->drain($data),
+            default => $this->operations->invoke($input['name'], $data),
+        };
+
+        return response()->json(['data' => $result]);
+    }
+
+    public function login(Request $request): JsonResponse
+    {
+        $this->protocol->authorize($request);
+        $options = config('rehearsal.login');
+        abort_unless(is_array($options), 404, 'Rehearsal login is not enabled.');
+        $input = $request->validate(['id' => 'required']);
+        abort_unless(is_int($input['id']) || is_string($input['id']), 422);
+        $guard = Auth::guard($options['guard'] ?? 'web');
+        abort_unless($guard->loginUsingId($input['id']), 404);
+        $request->session()->regenerate();
+
+        return response()->json(['data' => $guard->id()]);
+    }
+
+    private function factory(array $input): array
+    {
+        $factories = config('rehearsal.factories');
+        $data = Validator::validate($input, [
+            'items' => 'required|array|list|min:1|max:100',
+            'items.*' => 'required|array:model,attrs,states,count',
+            'items.*.model' => ['required', 'string', Rule::in(array_keys($factories))],
+            'items.*.attrs' => 'sometimes|array|max:100',
+            'items.*.states' => 'sometimes|array|list|max:10',
+            'items.*.states.*' => 'required|string',
+            'items.*.count' => 'sometimes|integer|min:1|max:100',
+        ]);
+        abort_if(array_sum(array_map(fn ($item) => $item['count'] ?? 1, $data['items'])) > 100, 422);
+
+        return DB::transaction(function () use ($data, $factories): array {
+            $results = [];
+            foreach ($data['items'] as $item) {
+                $definition = $factories[$item['model']];
+                $model = $definition['model'];
+                abort_unless(is_subclass_of($model, Model::class) && is_callable([$model, 'factory']), 422);
+                $factory = $model::factory();
+                foreach ($item['states'] ?? [] as $state) {
+                    $method = $definition['states'][$state] ?? null;
+                    abort_unless(is_string($method), 422, 'Factory state is not registered.');
+                    $factory = $factory->{$method}();
+                }
+                if (isset($item['count'])) {
+                    $factory = $factory->count((int) $item['count']);
+                }
+                $results[] = $factory->create($item['attrs'] ?? []);
+            }
+
+            return $results;
+        });
+    }
+
+    private function travel(Attempt $attempt, array $input): string
+    {
+        $data = Validator::validate($input, ['time' => 'required|date_format:Y-m-d\TH:i:s.v\Z']);
+        Clock::store($attempt, $data['time']);
+
+        return $data['time'];
+    }
+
+    private function artisan(array $input): array
+    {
+        $data = Validator::validate($input, ['name' => 'required|string', 'args' => 'present|array']);
+        $entry = config('rehearsal.artisan')[$data['name']] ?? null;
+        abort_unless(is_array($entry), 404, 'Artisan operation is not allowlisted.');
+        $args = Validator::validate($data['args'], $entry['rules'] ?? []);
+        $exit = Artisan::call($entry['command'], ($entry['fixed'] ?? []) + $args);
+
+        return ['code' => $exit];
+    }
+
+    private function drain(array $input): array
+    {
+        $queues = config('rehearsal.queues', [config('queue.connections.database.queue', 'default')]);
+        $data = Validator::validate($input, [
+            'queues' => 'sometimes|array|list|min:1|max:10',
+            'queues.*' => ['required', 'string', Rule::in($queues)],
+            'maxJobs' => 'sometimes|integer|min:1|max:100',
+        ]);
+        $requested = $data['queues'] ?? $queues;
+        $jobs = DB::connection(config('queue.connections.database.connection'))
+            ->table(config('queue.connections.database.table'))->whereIn('queue', $requested);
+        $failures = DB::connection(config('queue.failed.database'))
+            ->table(config('queue.failed.table'))->where('connection', 'database')->whereIn('queue', $requested);
+        $before = $jobs->count();
+        $failed = $failures->count();
+        $exit = Artisan::call('queue:work', [
+            'connection' => 'database',
+            '--queue' => implode(',', $requested),
+            '--stop-when-empty' => true,
+            '--max-jobs' => $data['maxJobs'] ?? 25,
+            '--max-time' => 20,
+            '--tries' => 1,
+            '--sleep' => 0,
+        ]);
+        $pending = $jobs->count();
+
+        return [
+            'code' => $exit,
+            'removed' => max(0, $before - $pending),
+            'pending' => $pending,
+            'failed' => $failures->count() - $failed,
+        ];
+    }
+}
