@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">Rehearsal stage mark</title>
+  <defs>
+    <clipPath id="stage"><rect x="6" y="6" width="116" height="116" rx="24"/></clipPath>
+  </defs>
+  <g clip-path="url(#stage)">
+    <path fill="#111827" d="M6 6h116v116H6z"/>
+    <path fill="#282438" d="M6 101h116v21H6z"/>
+    <path fill="#ffd594" d="M44 32h5l-8 71H26zM55 32h5l2 71H47zM79 32h5l18 71H87z"/>
+    <path fill="#9be8a9" d="M67 32h5l9 71H66z"/>
+    <path fill="#fff0c8" d="M26 103a7.5 2.8 0 1 0 15 0 7.5 2.8 0 1 0-15 0m21 0a7.5 2.8 0 1 0 15 0 7.5 2.8 0 1 0-15 0m40 0a7.5 2.8 0 1 0 15 0 7.5 2.8 0 1 0-15 0"/>
+    <path fill="#c8ffca" d="M66 103a7.5 2.8 0 1 0 15 0 7.5 2.8 0 1 0-15 0"/>
+    <path fill="#ef463a" d="M6 6h116v15c-22 2-35 14-58 14S28 23 6 21z"/>
+    <path fill="#ff5848" d="M6 6h37C39 29 28 48 15 63c9 17 9 41-3 59H6zm116 0H85c4 23 15 42 28 57-9 17-9 41 3 59h6z"/>
+    <path fill="#ce302d" d="M14 6h9c0 25-6 45-17 57v-9c4-12 8-29 8-48m100 0h-9c0 25 6 45 17 57v-9c-4-12-8-29-8-48M6 68h9c4 16 5 34 0 48 0-22-4-38-9-48m116 0h-9c-4 16-5 34 0 48 0-22 4-38 9-48"/>
+    <path fill="#ff8977" d="M6 61h10a3 3 0 0 1 0 6H6zm116 0h-10a3 3 0 0 0 0 6h10z"/>
+  </g>
+</svg>

@@ -1,12 +1,234 @@
-# Rehearsal
+<div align="center">
+  <img src="assets/banner.png" width="100%" alt="Rehearsal: four Playwright workers passing tests under theatre spotlights">
+  <h1><img src="assets/logo.svg" width="320" alt="Rehearsal"></h1>
+  <p><strong>Parallel Playwright testing for Laravel</strong></p>
+  <p>
+    <a href="https://github.com/Sti3bas/rehearsal/actions/workflows/ci.yml"><img src="https://github.com/Sti3bas/rehearsal/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
+    <img src="https://img.shields.io/badge/PHP-8.3%2B-777bb4" alt="PHP 8.3+">
+    <img src="https://img.shields.io/badge/Laravel-13-ff4433" alt="Laravel 13">
+  </p>
+</div>
 
-Parallel Playwright testing for Laravel.
+Rehearsal joins a real Laravel app to native Playwright Test. A worker can create users, sign in, send mail, or fill a search index without affecting another worker doing the same thing. You keep Playwright's browser APIs, traces, retries, and reporters; Rehearsal provisions and resets the Laravel state behind them.
 
-Rehearsal is built from scratch. Its Laravel–Playwright bridge and dedicated test environment take inspiration from [Saucebase Laravel Playwright](https://github.com/sauce-base/laravel-playwright).
+- **Run in parallel:** isolated databases, files, sessions, cache, and queues with one Laravel HTTP server.
+- **Arrange tests from TypeScript:** Laravel model factories, registered states, browser login, time travel, queue drains, and named app operations.
+- **Test real services:** opt in to Mailpit, Scout (database, Meilisearch, or Typesense), and Reverb.
+- **Bring your own setup:** add PHP integrations, relay routing through Nuxt SSR, and report reset timings by integration.
 
-## Run the starter
+## Quickstart
 
-The packages are not published yet. The monorepo starter is runnable on Laravel 13, PHP 8.3+, and Node 22.18+ or 24 LTS. SQLite needs no background services. MySQL 8.4 and PostgreSQL 17 need disposable local servers and the matching PDO extension.
+**Requirements:** Laravel 13, PHP 8.3+ with the matching PDO extension, Node 22.18+ in the 22 line or Node 24 LTS, and Playwright Test 1.65.1 or compatible. The managed server uses PHP CLI workers (Linux/macOS). Use a classic Laravel request lifecycle, not Octane or another persistent application runtime.
+
+**Release status:** The packages are not published yet. The commands below are the installation path once they are available. To try the current branch, use [the runnable starter](#run-from-source).
+
+```sh
+composer require --dev sti3bas/rehearsal
+npm install -D @sti3bas/rehearsal @playwright/test
+php artisan rehearsal:install
+npx playwright install chromium
+```
+
+The installer writes `.env.playwright` without overwriting an existing file. Ignore `.env.playwright` and `.rehearsal/`. SQLite is the default. Keep Laravel's migrations for the database-backed sessions, cache, and queues you use (including the failed-jobs table for queue drains).
+
+**`playwright.config.ts`**
+
+```ts
+import { defineConfig } from "@playwright/test";
+import { laravelServer } from "@sti3bas/rehearsal";
+
+export default defineConfig({
+  fullyParallel: true,
+  workers: 4,
+  use: { baseURL: "http://127.0.0.1:8100" },
+  webServer: laravelServer(),
+});
+```
+
+**`tests/app.spec.ts`**
+
+```ts
+import { expect, test } from "@sti3bas/rehearsal";
+
+test("creates a user in this test's database", async ({ laravel, page }) => {
+  const user = await laravel.factory("User", {
+    name: "Ada",
+    email: "ada@example.test",
+  });
+
+  expect(user.name).toBe("Ada");
+  expect((await page.goto("/"))?.ok()).toBe(true);
+});
+```
+
+This assumes the standard `App\Models\User` factory and a reachable root page. Run `npx playwright test`. To customize the package, publish `config/rehearsal.php`:
+
+```sh
+php artisan vendor:publish --tag=rehearsal-config
+```
+
+### Fixture API
+
+| Call | What it does |
+| --- | --- |
+| `laravel.factory("User", attrs, { states, count })` | Creates a model or a batch. The model and state aliases must be registered in config. Pass an array of definitions to batch several factories into one call. |
+| `laravel.login({ id })` | Logs in the current browser context through the configured guard. Opt in with `'login' => ['guard' => 'web']`. |
+| `laravel.travel("2034-01-02T12:00:00.000Z")` | Sets Laravel's test clock and the fixed time on pages managed by the fixture. |
+| `laravel.queue.drain({ queues, maxJobs })` | Runs bounded database queue work. Omit `queues` to use the configured allowlist, which defaults to Laravel's database queue name. Returns pending, removed, and failed counts. |
+| `laravel.artisan("about", {})` | Runs a configured alias, never an arbitrary Artisan command. |
+| `laravel.operation("reports.stage", input)` | Calls a named, validated application operation. |
+
+### How isolation works
+
+- A **run** is one managed Playwright server lifecycle. It owns the baseline and resources created during that run.
+- A **slot** is a stable worker lane, derived from Playwright's `parallelIndex + 1`. A replacement worker can reuse the slot.
+- An **attempt** is one test execution, including each retry. Before the test begins, Rehearsal resets the slot and grants a fresh signed routing marker. Requests carrying a retired marker are rejected.
+
+The lifecycle is **provision → reset → bind requests → cleanup**. Rehearsal copies or clones the migrated database baseline rather than running migrations for every test.
+
+## Built-in integrations
+
+| Integration | Isolation and configuration |
+| --- | --- |
+| Database | SQLite file snapshot, MySQL table/data clone, or PostgreSQL template clone. Set `database.seeder` for a shared baseline and `database.aliases` for additional named connections that should use the slot database. |
+| Filesystem | Local and public disks are isolated by default. Set `disks` to select others. Use the disk's generated `url()` or `temporaryUrl()`, not hardcoded `/storage/…` links. |
+| Cache, session, queue | Uses the slot database. Keeps the configured database queue and table names. |
+| Clock | Per-attempt Laravel clock and Playwright page clock through `laravel.travel()`. |
+| Mail / Mailpit | Mail logs by default. Opt in to Mailpit to inspect attempt-tagged inboxes via `Mailpit::messages($attempt)` in a named operation. |
+| Scout | Database search uses the slot DB. Meilisearch and Typesense use a scoped key and per-slot index names; reset clears documents without rebuilding the indexes. |
+| Reverb | Each attempt has its own Reverb application, so workers can reuse channel names. Only the public browser config is injected. |
+
+### MySQL or PostgreSQL
+
+Set these in `.env.playwright` (or pass their values through `laravelServer({ database: { ... } })`):
+
+```dotenv
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USERNAME=rehearsal
+DB_PASSWORD=your-local-test-password
+REHEARSAL_DB_DISPOSABLE=true
+```
+
+For PostgreSQL use `DB_CONNECTION=pgsql` and the PostgreSQL port. The account needs permission to create and drop databases. Use a disposable loopback server, never a development or production database. MySQL templates support tables/data, not views, triggers, routines, or events.
+
+### Mailpit, Scout, and Reverb
+
+Add entries to the **existing** `integrations` array in the published config, keeping the defaults. Install Laravel Scout/Reverb and the selected Scout PHP client in the app when using them.
+
+```php
+// Add to the existing 'integrations' array:
+'mailpit' => \Sti3bas\Rehearsal\Mailpit::class,
+'scout' => \Sti3bas\Rehearsal\Scout::class,
+'reverb' => \Sti3bas\Rehearsal\Reverb::class,
+
+// Set at the top level of config/rehearsal.php:
+'mailpit' => ['api' => 'http://127.0.0.1:8025', 'smtp_port' => 1025],
+'scout' => [
+    'engine' => 'typesense', // database, meilisearch, or typesense
+    'origin' => 'http://127.0.0.1:8108',
+    'admin_key' => env('REHEARSAL_SCOUT_ADMIN_KEY'),
+    'models' => [\App\Models\User::class],
+],
+'reverb' => [
+    'origin' => 'http://127.0.0.1:18080',
+    'server' => env('REHEARSAL_REVERB_SERVER', false),
+],
+```
+
+- **Scout:** Custom search/index names must honor `scout.prefix`. For remote engines, list the searchable models and configure their index/collection schema as you normally would. Remote indexes start empty; index baseline records in a named operation if a test needs them. The database engine needs no search container or admin key.
+- **Mailpit:** The integration configures the default test mailer. Explicit app-specific mailers should never point at live SMTP during a test.
+- **Reverb:** Run a separate daemon from the same checkout with `APP_ENV=playwright REHEARSAL_REVERB_SERVER=true php artisan reverb:start --host=127.0.0.1 --port=18080`. Import `reverbTest as test` in browser specs and configure your Echo client with the `key`, `host`, and `port` from `globalThis.__REHEARSAL_REVERB__` before it starts. The publisher secret stays server-side.
+
+See [the working example config](examples/laravel/config/rehearsal.php) and [disposable services](examples/laravel/compose.integrations.yml).
+
+### Write an integration
+
+An integration implements four lifecycle hooks. Register the class under a unique key in `rehearsal.integrations`. The registry resolves it through Laravel's container in configuration order, then cleans up in reverse.
+
+```php
+namespace App\Testing;
+
+use Illuminate\Support\Facades\File;
+use Sti3bas\Rehearsal\{Attempt, Integration, Run};
+
+final class ReportScratch implements Integration
+{
+    public function provision(Run $run): void {}
+
+    public function reset(Attempt $attempt): void
+    {
+        $path = $attempt->path('reports');
+        if (is_dir($path) && ! File::deleteDirectory($path)) {
+            throw new \RuntimeException('Cannot clear the report scratch directory.');
+        }
+
+        File::ensureDirectoryExists($path, 0700);
+    }
+
+    public function bind(Attempt $attempt): void
+    {
+        config(['reports.scratch_path' => $attempt->path('reports')]);
+    }
+
+    public function cleanup(Run $run): void {}
+}
+```
+
+Add `'reports' => \App\Testing\ReportScratch::class` to the integration map. The app can now use `reports.scratch_path`. These files live inside the run directory, which the managed launcher removes. If your integration creates resources outside that directory, record what it owns and remove only those resources during cleanup.
+
+### Register named operations
+
+Keep fixture setup that knows about your application in an application service provider. Validate inputs and use the app's own methods rather than adding a generic command endpoint.
+
+```php
+use Illuminate\Support\Facades\Storage;
+use Sti3bas\Rehearsal\Operations;
+
+// In a service provider's boot() method:
+if ($this->app->environment('playwright')) {
+    $this->app->make(Operations::class)->register(
+        'reports.stage',
+        ['title' => ['required', 'string', 'max:100']],
+        fn (array $data) => Storage::disk('local')->put('report.txt', $data['title']),
+    );
+}
+```
+
+```ts
+await laravel.operation("reports.stage", { title: "April summary" });
+```
+
+For purpose-built Artisan wrappers, add aliases under `rehearsal.artisan` with a `command`, optional `fixed` arguments, and validation `rules` for arguments the caller may supply.
+
+## SSR and split frontends
+
+For a separate local frontend, keep its URL in Playwright's `baseURL` and set the Rehearsal `laravelURL` fixture option to the Laravel origin. If Laravel runs outside the test working directory, also set `rehearsalRoot` and `laravelServer({ cwd: ... })` to its root. Both origins must be loopback HTTP.
+
+- **Nuxt:** copy the [server-only plugin](examples/nuxt/app/plugins/rehearsal.server.ts) and set the [private runtime config](examples/nuxt/nuxt.config.ts). Use the injected fetch for server-side Laravel requests. It forwards the attempt marker only to the configured Laravel origin, not session cookies or the control capability.
+- **Inertia/Vite:** same-origin Laravel controllers do not need a relay. If your separate SSR process calls Laravel itself, transport the marker on the trusted server-to-server hop and pass that request's headers to `rehearsalSsrFetch` from `@sti3bas/rehearsal/ssr`. Stock Inertia SSR does not forward it automatically. Keep the marker out of page props, HTML, and hydration payloads.
+
+## CI and performance
+
+After installing app dependencies in CI, run:
+
+```yaml
+- run: php artisan rehearsal:install
+- run: npx playwright install --with-deps chromium
+- run: npx playwright test --workers=4
+```
+
+The [full workflow](.github/workflows/ci.yml) exercises all three DB engines at one and four workers, plus all opt-in services. To see reset costs, add the reporter next to your regular reporter:
+
+```ts
+reporter: [["line"], ["@sti3bas/rehearsal/reporter"]]
+```
+
+It reports mean/max reset times and the number of measured attempts, including retries. Start with a small worker count and measure on your runner. SQLite file copies are a simple starting point; if a suite needs MySQL or PostgreSQL behavior, test against that engine rather than swapping SQL semantics for speed.
+
+### Run from source
 
 ```sh
 composer install --working-dir=examples/laravel
@@ -17,30 +239,7 @@ npx playwright install chromium --only-shell
 npm run e2e
 ```
 
-The example exercises the same IDs, cache keys, disk paths and job queues in different slots. To select a server database, set `REHEARSAL_E2E_ENGINE=mysql` or `pgsql`; the starter defaults to loopback ports 13386 and 15438 respectively. It expects the disposable credentials defined in the CI workflow, never an existing developer database. To run sequentially, set `REHEARSAL_E2E_WORKERS=1`.
-
-## App setup
-
-When published, install the Composer and npm packages as dev dependencies: `sti3bas/rehearsal` and `@sti3bas/rehearsal`. Run `php artisan rehearsal:install` once and ignore `.env.playwright` and `.rehearsal/`. Set Playwright's `baseURL` to `http://127.0.0.1:8100`, set `webServer: laravelServer()`, and import `test` and `expect` from `@sti3bas/rehearsal`.
-
-- The Laravel bridge supports factory batches and registered states, opt-in session login, time travel, bounded database queue drains and named operations.
-- Publish config with `php artisan vendor:publish --tag=rehearsal-config` to select integrations, factory states, a baseline seeder or Artisan aliases.
-- For MySQL/PostgreSQL set `DB_CONNECTION`, the loopback host/port and the disposable credentials in `.env.playwright`, plus `REHEARSAL_DB_DISPOSABLE=true`. The account needs permission to create and drop databases. Do not use a server with development or production data. MySQL baselines support tables and data, not views, triggers, routines or events.
-- Named connections are disabled unless they match the selected driver or are listed in `rehearsal.database.aliases`. Allowed aliases share the same isolated database and transaction.
-- Generate test asset URLs with the disk's `url()` or `temporaryUrl()`; hardcoded `/storage/…` URLs still point at the application's public symlink, not the isolated disks.
-- Custom integrations implement `Sti3bas\Rehearsal\Integration` and are registered in `config/rehearsal.php`. The registry calls them in configuration order and cleans them up in reverse. Named operations register with `Sti3bas\Rehearsal\Operations`; validate inputs and keep handlers test-only.
-
-Rehearsal supports a classic per-request Laravel runtime, not persistent Laravel workers. Browser routing uses an HTTP-only cookie on the trusted loopback host. Cookies do not distinguish ports, so run only trusted local services on that host. The separate control capability is never sent by the browser or SSR adapter.
-
-## Optional integrations
-
-Register the classes under `rehearsal.integrations` in the order they depend on one another (database before Scout). See [the example config](examples/laravel/config/rehearsal.php) for a working setup.
-
-- **Mailpit** (`Mailpit::class`): set `mailpit.api` and `mailpit.smtp_port` for a disposable loopback instance. The default test mailer captures messages with an attempt tag. Use `Mailpit::messages($attempt)` inside an app-owned named operation to inspect that attempt's inbox. Do not point app-specific SMTP mailers at live services.
-- **Scout** (`Scout::class`): install Laravel Scout and select `scout.engine`: `database`, `meilisearch` or `typesense`. For remote engines install the corresponding PHP client, set `scout.origin` and `scout.admin_key` for a disposable loopback instance, and list the searchable classes in `scout.models`. Custom search/index names must honor `scout.prefix`. Rehearsal uses a per-slot app key restricted to that slot's indexes and clears documents without rebuilding index schemas/settings. The first attempt starts with empty remote indexes; use app-owned setup to index any baseline records. Scout indexing is dispatched synchronously rather than via Laravel queues.
-- **Reverb** (`Reverb::class` registered as `reverb`): install Laravel Reverb and set `reverb.origin`. Start a **separate test-only daemon** from the same Laravel checkout with `APP_ENV=playwright REHEARSAL_REVERB_SERVER=true php artisan reverb:start --host=127.0.0.1 --port=18080`. Import `reverbTest as test` to inject `globalThis.__REHEARSAL_REVERB__` before your Echo client initializes. Apply its public `key`, `host`, and `port` to the client; publisher secrets stay server-side. Workers can reuse channel names because each attempt gets its own Reverb app.
-
-From the repository root, after starter setup:
+Add `REHEARSAL_E2E_WORKERS=1` for a serial run. The optional services can be exercised locally:
 
 ```sh
 export REHEARSAL_UID="$(id -u)" REHEARSAL_GID="$(id -g)"
@@ -53,14 +252,20 @@ REHEARSAL_E2E_NUXT_PORT=8325 REHEARSAL_E2E_WORKERS=4 npm run e2e -- ssr.spec.ts
 docker compose -f examples/laravel/compose.integrations.yml down
 ```
 
-### SSR
+## Security model
 
-Copy the [Nuxt server plugin](examples/nuxt/app/plugins/rehearsal.server.ts) and set the corresponding private runtime config. Enable it only for E2E. It relays the attempt marker to the configured loopback Laravel origin; it does not forward session cookies or follow redirects. Use the injected fetch for server-side Laravel calls. Do not put the marker in page props, HTML or Nuxt payloads.
+Rehearsal is **test-only**. The bridge activates only in the `playwright` environment with valid managed run settings, and the managed launcher listens on loopback. Keep it off public networks and use disposable databases and service credentials. Never publish the launch record or `.env.playwright`.
 
-Inertia's same-origin controllers do not need a relay. If an Inertia/Vite SSR process fetches Laravel itself, carry the marker on a trusted server-to-server request outside the Inertia page payload. Then use `rehearsalSsrFetch` from `@sti3bas/rehearsal/ssr` with that request's headers. Stock Inertia SSR does not copy the browser's marker to its rendering process.
+The browser's signed, HTTP-only cookie routes ordinary app requests to the test attempt. Cookies do not distinguish ports, so run only trusted loopback services on that host. The separate control capability is not sent in browser navigation or forwarded by SSR. Rehearsal does not expose arbitrary PHP, SQL, shell commands, or unrestricted Artisan execution.
 
-### Timing
+## When to use something else
 
-Add `["@sti3bas/rehearsal/reporter"]` alongside your usual Playwright reporters. It prints mean and maximum reset times per integration and the number of measured attempts, including retries.
+- **Laravel Dusk** or **Pest browser testing** are natural choices if you want to write browser specs in PHP alongside your Laravel tests.
+- **Playwright alone** is enough when you already provision isolated state outside the test runner, or tests only use public interfaces and don't need fixture setup.
+- **Rehearsal** is for teams that want native Playwright Test in TypeScript and need Laravel state reset and optional integrations per parallel worker.
 
-Licensed under the MIT License.
+## Credits and license
+
+Rehearsal was built from scratch. The Laravel–Playwright bridge and dedicated test environment were inspired by [Saucebase Laravel Playwright](https://github.com/sauce-base/laravel-playwright).
+
+[Composer package](packages/php/README.md) · [npm package](packages/ts/README.md) · [MIT License](LICENSE) · [Logo](assets/logo.svg) · [Mark](assets/mark.svg)
