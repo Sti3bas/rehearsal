@@ -6,6 +6,10 @@ import { capabilityHeader, loopback, markerHeader } from "./transport.js";
 export default defineNitroPlugin(({ h3App }) => {
   const { enabled, laravelOrigin } = useRuntimeConfig().rehearsal;
   if (enabled !== true && enabled !== "true") return;
+  if (typeof h3App?.handler !== "function") {
+    console.warn("Rehearsal automatic Nitro forwarding requires Nitro 2; use useRehearsalFetch() for Nuxt app SSR.");
+    return;
+  }
 
   const origin = new URL(laravelOrigin);
   if (!loopback(origin)) throw new Error("Rehearsal Nitro requires a loopback Laravel origin.");

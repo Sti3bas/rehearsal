@@ -297,7 +297,7 @@ const { data } = await useFetch("/api/users", {
 
 For direct calls, use `const fetchLaravel = useRehearsalFetch()` in setup and call it like `$fetch`. Set `NUXT_REHEARSAL_ENABLED=true` **only** in the Nuxt process launched by Playwright. The test relay defaults to `http://127.0.0.1:8100`; if Playwright launches Laravel on a different port, set `NUXT_REHEARSAL_LARAVEL_ORIGIN` in the same process. In the browser or while disabled, the composable returns Nuxt’s ordinary `$fetch`, so keep your app’s usual URL or `baseURL`.
 
-**Nitro routes.** With the module enabled on a Node Nitro server, a route such as `server/api/sitemap.get.ts` can call `$fetch("/api/sitemap", { baseURL: apiBase })` or use an imported `ofetch` normally. Rehearsal forwards the incoming attempt marker only to the configured Laravel origin and does not follow redirects on that hop. It does not copy incoming cookies or capabilities. For SSR mocks and opt-in cookie forwarding, keep using `useRehearsalFetch()` in Nuxt app code.
+**Nitro routes.** With the module enabled on a Node Nitro 2 server, a route such as `server/api/sitemap.get.ts` can call `$fetch("/api/sitemap", { baseURL: apiBase })` or use an imported `ofetch` normally. Rehearsal forwards the incoming attempt marker only to the configured Laravel origin and does not follow redirects on that hop. It does not copy incoming cookies or capabilities. Automatic forwarding is not available on Nitro 3. For SSR mocks and opt-in cookie forwarding, keep using `useRehearsalFetch()` in Nuxt app code.
 
 **Typesense InstantSearch.** Enable `NUXT_REHEARSAL_TYPESENSE=true` in the Nuxt test process when Laravel's Typesense integration is enabled. Use the auto-imported adapter helper where your app constructs its normal search client:
 
