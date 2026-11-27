@@ -10,6 +10,7 @@ use DateTimeInterface;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
 use ReflectionFunction;
 use ReflectionMethod;
@@ -17,6 +18,9 @@ use Throwable;
 
 final class TypesCommand extends Command
 {
+    private ?string $inMemorySchema = null;
+
+    private bool $inMemorySchemaAttempted = false;
     protected $signature = 'rehearsal:types {path : Destination .d.ts file} {--database= : Read columns from this configured connection}';
 
     protected $description = 'Generate TypeScript declarations for this application’s Rehearsal configuration';
@@ -107,14 +111,30 @@ final class TypesCommand extends Command
                 $attributes[$column['name']] = $column['nullable'] ? "$type | null" : $type;
             }
         } else {
+            $loaded = false;
             try {
                 if (Schema::hasTable($model->getTable())) {
                     foreach (Schema::getColumns($model->getTable()) as $column) {
                         $type = $this->columnType(strtolower($column['type_name']));
                         $attributes[$column['name']] = $column['nullable'] ? "$type | null" : $type;
                     }
+                    $loaded = true;
                 }
             } catch (Throwable) {
+            }
+            if (! $loaded) {
+                $ephemeral = $this->inMemorySchemaConnection();
+                if ($ephemeral !== null) {
+                    try {
+                        if (Schema::connection($ephemeral)->hasTable($model->getTable())) {
+                            foreach (Schema::connection($ephemeral)->getColumns($model->getTable()) as $column) {
+                                $type = $this->columnType(strtolower($column['type_name']));
+                                $attributes[$column['name']] = $column['nullable'] ? "$type | null" : $type;
+                            }
+                        }
+                    } catch (Throwable) {
+                    }
+                }
             }
         }
         $attributes[$model->getKeyName()] = $this->phpType($model->getKeyType());
@@ -283,6 +303,41 @@ final class TypesCommand extends Command
             'array', 'json', 'object' => 'unknown[] | Record<string, unknown>',
             default => 'unknown',
         };
+    }
+
+    private function inMemorySchemaConnection(): ?string
+    {
+        if ($this->inMemorySchemaAttempted) {
+            return $this->inMemorySchema;
+        }
+        $this->inMemorySchemaAttempted = true;
+
+        $migrationsPath = database_path('migrations');
+        if (! is_dir($migrationsPath)) {
+            return null;
+        }
+
+        $connection = 'rehearsal_types_schema';
+        config(["database.connections.{$connection}" => [
+            'driver' => 'sqlite',
+            'database' => ':memory:',
+            'prefix' => '',
+            'foreign_key_constraints' => false,
+        ]]);
+
+        try {
+            $exit = Artisan::call('migrate', [
+                '--database' => $connection,
+                '--force' => true,
+            ]);
+            if ($exit === 0) {
+                $this->inMemorySchema = $connection;
+            }
+        } catch (Throwable) {
+            return null;
+        }
+
+        return $this->inMemorySchema;
     }
 
     /** @return array<string, string> */
