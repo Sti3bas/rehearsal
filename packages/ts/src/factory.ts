@@ -112,12 +112,18 @@ export function createFactoryBuilder(
           return send(items);
         };
       }
-      return (...args: unknown[]) => createFactoryBuilder(
-        send,
-        model,
-        [...calls, { state: prop, args: args.map(serializeFactoryArg) }],
-        count,
-      );
+      return (...args: unknown[]) => {
+        let end = args.length;
+        while (end > 0 && args[end - 1] === undefined) {
+          end -= 1;
+        }
+        return createFactoryBuilder(
+          send,
+          model,
+          [...calls, { state: prop, args: args.slice(0, end).map(serializeFactoryArg) }],
+          count,
+        );
+      };
     },
   });
 }
