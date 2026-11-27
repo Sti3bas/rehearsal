@@ -1,17 +1,55 @@
 import type { RehearsalSchema } from "./index.js";
 import type { RouteTarget } from "./routes.js";
 
+export const rehearsalModel: unique symbol = Symbol.for("rehearsal.model");
+
 type Schema<K, Fallback> = K extends keyof RehearsalSchema ? RehearsalSchema[K] : Fallback;
 type Row = Record<string, unknown>;
-type Factories = Schema<"factories", Record<string, { attributes: Row; model: Row; states: string; relations: Record<string, string> }>>;
+type FallbackStates = Record<string, readonly unknown[]>;
+type Factories = Schema<"factories", Record<string, { attributes: Row; model: Row; states: FallbackStates; relations: Record<string, string> }>>;
 type Operations = Schema<"operations", Record<string, { input: Row; output: unknown }>>;
 type Artisan = Schema<"artisan", Record<string, Row>>;
 
 export type FactoryName = keyof Factories & string;
 export type FactoryAttributes<K extends FactoryName> = Factories[K]["attributes"];
-export type FactoryModel<K extends FactoryName> = Factories[K]["model"];
-export type FactoryState<K extends FactoryName> = Factories[K]["states"];
-export type FactoryOptions<K extends FactoryName> = { states?: readonly FactoryState<K>[] };
+export type FactoryModel<K extends FactoryName> = Factories[K]["model"] & { readonly [rehearsalModel]?: K };
+export type FactoryModelRef<K extends FactoryName = FactoryName> = { readonly id: number | string; readonly [rehearsalModel]?: K };
+export type FactoryStateMap<K extends FactoryName> =
+  [Factories[K]["states"]] extends [never]
+    ? Record<never, []>
+    : Factories[K]["states"] extends Record<string, readonly unknown[]>
+      ? Factories[K]["states"]
+      : Record<Factories[K]["states"] & string, []>;
+export type FactoryState<K extends FactoryName> = keyof FactoryStateMap<K> & string;
+export type FactoryStateCall<K extends FactoryName> =
+  | FactoryState<K>
+  | { [S in FactoryState<K>]: { name: S; args?: FactoryStateMap<K>[S] } }[FactoryState<K>];
+export type FactoryOptions<K extends FactoryName> = { states?: readonly FactoryStateCall<K>[] };
+
+interface FactoryBuilderBase<K extends FactoryName> {
+  state(attrs: FactoryAttributes<K>): FactoryBuilder<K>;
+  for(model: FactoryModelRef<FactoryName>, relation?: string): FactoryBuilder<K>;
+  count(n: number): FactoryCountBuilder<K>;
+  create(overrides?: FactoryAttributes<K>): Promise<FactoryModel<K>>;
+  createMany<const O extends readonly FactoryAttributes<K>[]>(
+    overrides: O,
+  ): Promise<{ -readonly [I in keyof O]: FactoryModel<K> }>;
+}
+
+interface FactoryCountBuilderBase<K extends FactoryName> {
+  state(attrs: FactoryAttributes<K>): FactoryCountBuilder<K>;
+  for(model: FactoryModelRef<FactoryName>, relation?: string): FactoryCountBuilder<K>;
+  create(
+    overrides?: FactoryAttributes<K> | ((attrs: FactoryAttributes<K>, index: number) => FactoryAttributes<K>),
+  ): Promise<FactoryModel<K>[]>;
+}
+
+export type FactoryBuilder<K extends FactoryName> = FactoryBuilderBase<K> & {
+  [S in FactoryState<K>]: (...args: FactoryStateMap<K>[S]) => FactoryBuilder<K>;
+};
+export type FactoryCountBuilder<K extends FactoryName> = FactoryCountBuilderBase<K> & {
+  [S in FactoryState<K>]: (...args: FactoryStateMap<K>[S]) => FactoryCountBuilder<K>;
+};
 export type BatchFactory = {
   [K in FactoryName]: FactoryOptions<K> & {
     model: K;

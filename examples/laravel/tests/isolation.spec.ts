@@ -30,7 +30,7 @@ test("creates discovered models and rejects unregistered factory states", async 
   const category = await laravel.factory("Category", { name: "Collectibles" });
   expect(category.name).toBe("Collectibles");
   await expect(laravel.factory("Category", {}, { states: ["count"] })).rejects.toThrow("HTTP 422");
-  await expect(laravel.factory("App\\Models\\Category")).rejects.toThrow("HTTP 422");
+  await expect(laravel.factory("App\\Models\\Category").create()).rejects.toThrow("HTTP 422");
 });
 
 test("resolves configured belongs-to references in a factory batch", async ({ laravel }) => {

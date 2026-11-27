@@ -82,7 +82,7 @@ php artisan vendor:publish --tag=rehearsal-config
 
 | Call | What it does |
 | --- | --- |
-| `laravel.factory("User", attrs, { states, count })` | Creates a model or a batch. Model aliases are discovered automatically; register any states you want to call. Pass an array of definitions to batch several factories into one call. |
+| `laravel.factory("User").create(attrs)` | Returns a fluent factory builder mirroring your Laravel factory: chain discovered state methods (including typed arguments), `.for(model, relation?)`, `.state(attrs)`, `.count(n)`, `.create(overrides?)`, and `.createMany([...])`. Direct `laravel.factory("User", attrs, { states, count })` and batch `laravel.factory([...])` remain supported. |
 | `laravel.login({ id }, context?)` | Logs in the current browser context through the configured guard. Pass another browser context to bind it to the same attempt and log it in separately. Opt in with `'login' => ['guard' => 'web']`. |
 | `laravel.travel("2034-01-02T12:00:00.000Z")` | Sets Laravel's test clock and the fixed time on pages managed by the fixture. |
 | `laravel.artisan("about", {})` | Runs a configured alias, never an arbitrary Artisan command. |
@@ -91,6 +91,8 @@ php artisan vendor:publish --tag=rehearsal-config
 #### Factory discovery
 
 Rehearsal discovers autoloadable Eloquent models in `app/Models` using Laravel's factory resolution, and looks for standalone Eloquent factories in `database/factories`. Use the exact model basename (for example, `User`). If two models share a basename, define explicit aliases instead. A model's own factory hook takes precedence over a discovered standalone factory. An explicit `factory` class in config overrides both and uses the configured model unless the factory declares a model itself.
+
+Public fluent state methods on each factory class (methods returning `static` / `self` / `Factory` with serializable parameters: scalars, arrays, backed enums, `DateTimeInterface`/`Carbon`, and Eloquent `Model`s or `Model` unions) are discovered automatically and emitted by `rehearsal:types`. Returned models carry a non-enumerable alias tag so they can be passed directly into `.for(model, relation?)` or typed state methods without affecting JSON serialization or equality checks. Set `'discover_states' => false` under `rehearsal.factories` (or `'states' => false` on an alias) to disable automatic state discovery.
 
 Set `factories.model_paths` or `factories.factory_paths` in `config/rehearsal.php` to replace either list of scan directories. Paths can be absolute or relative to the Laravel root. Entries under `factories` can add aliases, override a discovered model, or supply only metadata such as `states`, `relations`, or `types` for an existing alias. Set `factories.discover` to `false` to use only explicitly configured factories.
 

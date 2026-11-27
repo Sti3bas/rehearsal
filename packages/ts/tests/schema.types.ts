@@ -1,4 +1,4 @@
-import { test } from "@sti3bas/rehearsal";
+import { test, type FactoryModelRef } from "@sti3bas/rehearsal";
 import { expectTypeOf } from "vitest";
 
 declare module "@sti3bas/rehearsal" {
@@ -7,19 +7,22 @@ declare module "@sti3bas/rehearsal" {
       Listing: {
         attributes: { title?: string; price?: number };
         model: { id: number; title?: string; price?: number };
-        states: "sold";
+        states: {
+          sold: [];
+          soldTo: [buyer: FactoryModelRef<"User">, soldAt?: string | Date | null];
+        };
         relations: { seller: "User" };
       };
       User: {
         attributes: { name?: string };
         model: { id: number; name?: string };
-        states: never;
+        states: {};
         relations: {};
       };
       StandaloneFactoryModel: {
         attributes: { active?: boolean | null; id?: number };
         model: { id: number; active?: boolean | null };
-        states: never;
+        states: {};
         relations: {};
       };
     };
@@ -52,6 +55,26 @@ test("generated types reach the Playwright fixture", async ({ laravel }) => {
   const discovered = await laravel.create("StandaloneFactoryModel", { attrs: { active: true } });
   expectTypeOf(discovered.active).toEqualTypeOf<boolean | null | undefined>();
 
+  const fluentUser = await laravel.factory("User").create({ name: "Ada" });
+  const fluentListing = await laravel.factory("Listing")
+    .for(fluentUser, "owner")
+    .sold()
+    .soldTo(fluentUser, new Date())
+    .state({ price: 200 })
+    .create({ title: "Table" });
+  expectTypeOf(fluentListing.id).toEqualTypeOf<number>();
+  const [first, second] = await laravel.factory("Listing").sold().createMany([{ title: "A" }, { title: "B" }]);
+  expectTypeOf(first.id).toEqualTypeOf<number>();
+  expectTypeOf(second.title).toEqualTypeOf<string | undefined>();
+  const many = await laravel.factory("Listing").count(3).sold().create((_, i) => ({ title: `L${i}` }));
+  expectTypeOf(many[0].id).toEqualTypeOf<number>();
+
+  // @ts-expect-error wrong model passed to soldTo
+  await laravel.factory("Listing").soldTo(fluentListing).create();
+  // @ts-expect-error unknown state on fluent builder
+  await laravel.factory("Listing").nonexistent().create();
+  // @ts-expect-error invalid state argument type
+  await laravel.factory("Listing").soldTo(fluentUser, 123).create();
   // @ts-expect-error discovered attributes are typed too
   await laravel.create("StandaloneFactoryModel", { attrs: { active: "yes" } });
   // @ts-expect-error states must be registered

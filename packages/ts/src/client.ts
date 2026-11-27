@@ -1,16 +1,23 @@
 import { randomUUID } from "node:crypto";
 import type { APIRequestContext, BrowserContext, Page } from "@playwright/test";
+import { createFactoryBuilder, serializeFactoryArg, tagModel } from "./factory.js";
 import { encodeHttpRules, type HttpFakeRules } from "./http.js";
 import { Mailbox } from "./mail.js";
 import { Queue, type DrainOptions, type DrainResult } from "./queue.js";
 import { capabilityHeader, loopback, markerCookie, markerHeader, protocol } from "./transport.js";
 import { claimRoute, encodeRouteResponse, matchesRoute, mockResponse, routePattern, wait, waitForRouteGate, type RouteResponse, type RouteTarget } from "./routes.js";
-import type { ArtisanInput, ArtisanName, BatchChecks, BatchFactory, BatchResults, FactoryAttributes, FactoryModel, FactoryName, FactoryOptions, FactoryState, FaultArguments, FaultTarget, InputArguments, OperationInput, OperationName, OperationOutput, ScheduleName } from "./schema.js";
+import type { ArtisanInput, ArtisanName, BatchChecks, BatchFactory, BatchResults, FactoryAttributes, FactoryBuilder, FactoryModel, FactoryName, FactoryOptions, FactoryState, FaultArguments, FaultTarget, InputArguments, OperationInput, OperationName, OperationOutput, ScheduleName } from "./schema.js";
+
+export type FactoryCall =
+  | { state: string; args?: readonly unknown[] }
+  | { attrs: Record<string, unknown> }
+  | { for: Record<string, unknown>; relation?: string };
 
 export interface FactoryDefinition {
   model: string;
   attrs?: Record<string, unknown>;
-  states?: readonly string[];
+  states?: readonly (string | { name: string; args?: readonly unknown[] })[];
+  calls?: readonly FactoryCall[];
   count?: number;
   refs?: Record<string, number>;
 }
@@ -166,21 +173,35 @@ export class Laravel {
     if (this.time) await page.clock.setFixedTime(this.time);
   }
 
-  async factory<K extends FactoryName>(model: K, attrs: FactoryAttributes<NoInfer<K>>, options: FactoryOptions<NoInfer<K>> & { count: number }): Promise<FactoryModel<K>[]>;
-  async factory<K extends FactoryName>(model: K, attrs?: FactoryAttributes<NoInfer<K>>, options?: FactoryOptions<NoInfer<K>>): Promise<FactoryModel<K>>;
-  async factory<const Items extends readonly BatchFactory[]>(items: Items & BatchChecks<Items>): Promise<BatchResults<Items>>;
-  async factory(model: string | readonly FactoryDefinition[], attrs: Row = {}, options: Omit<FactoryDefinition, "model" | "attrs"> = {}) {
-    return typeof model === "string"
-      ? (await this.sendFactories([{ model, attrs, ...options }]))[0]
-      : this.sendFactories(model);
+  factory<K extends FactoryName>(model: K): FactoryBuilder<K>;
+  factory<K extends FactoryName>(model: K, attrs: FactoryAttributes<NoInfer<K>>, options: FactoryOptions<NoInfer<K>> & { count: number }): Promise<FactoryModel<K>[]>;
+  factory<K extends FactoryName>(model: K, attrs: FactoryAttributes<NoInfer<K>>, options?: FactoryOptions<NoInfer<K>>): Promise<FactoryModel<K>>;
+  factory<const Items extends readonly BatchFactory[]>(items: Items & BatchChecks<Items>): Promise<BatchResults<Items>>;
+  factory(model: string | readonly FactoryDefinition[], attrs?: Row, options?: Omit<FactoryDefinition, "model" | "attrs">) {
+    if (Array.isArray(model)) {
+      return this.sendFactories(model);
+    }
+    if (attrs === undefined && options === undefined) {
+      return createFactoryBuilder((items) => this.sendFactories(items), model as string);
+    }
+    return this.sendFactories([{ model: model as string, attrs: attrs ?? {}, ...options }]).then((results) => results[0]);
   }
 
   create<K extends FactoryName>(model: K, { state, attrs }: { state?: FactoryState<NoInfer<K>>; attrs?: FactoryAttributes<NoInfer<K>> } = {}): Promise<FactoryModel<K>> {
-    return this.factory(model, attrs, { states: state === undefined ? [] : [state] });
+    return this.factory(model, attrs ?? {}, { states: state === undefined ? [] : [state] });
   }
 
-  private sendFactories(items: readonly FactoryDefinition[]) {
-    return this.operation<FactoryResult[]>("factory", { items });
+  private async sendFactories(items: readonly FactoryDefinition[]) {
+    const encoded = items.map((item) => item.states
+      ? {
+          ...item,
+          states: item.states.map((state) => typeof state === "string"
+            ? state
+            : { name: state.name, ...(state.args ? { args: state.args.map(serializeFactoryArg) } : {}) }),
+        }
+      : item);
+    const results = await this.operation<FactoryResult[]>("factory", { items: encoded });
+    return results.map((result, index) => tagModel(result, items[index].model));
   }
 
   async login(user: { id: number | string }, context = this.context) {
