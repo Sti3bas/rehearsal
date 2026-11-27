@@ -67,14 +67,18 @@ final class Scout implements Integration, ClientMetadata
         $path = $attempt->path('scout.json');
         $state = $this->read($path);
         if (isset($state['key']['value'])) {
+            $empty = [];
             if ($engine === 'typesense') {
                 $this->deleteKey($state['searchKey']['id'] ?? null, false);
+                if (count($state['indexes']) > 2) {
+                    $empty = $this->emptyTypesenseIndexes();
+                }
             }
             foreach (array_reverse($state['indexes']) as $name) {
                 $this->owned($attempt->run, $name);
                 if ($engine === 'meilisearch') {
                     $this->wait($this->api()->delete('/indexes/'.$name.'/documents')->throw());
-                } else {
+                } elseif (! isset($empty[$name])) {
                     $this->api()->delete('/collections/'.$name.'/documents?truncate=true')->throw();
                 }
             }
@@ -166,6 +170,20 @@ final class Scout implements Integration, ClientMetadata
             'collectionPrefix' => $this->prefix($attempt),
             'searchKey' => $this->read($attempt->path('scout.json'))['searchKey']['value'],
         ];
+    }
+
+    private function emptyTypesenseIndexes(): array
+    {
+        $response = $this->api()->get('/collections', ['exclude_fields' => 'fields']);
+        $collections = $response->successful() ? $response->json() : null;
+        $empty = [];
+        foreach (is_array($collections) ? $collections : [] as $collection) {
+            if (is_string($collection['name'] ?? null) && ($collection['num_documents'] ?? null) === 0) {
+                $empty[$collection['name']] = true;
+            }
+        }
+
+        return $empty;
     }
 
     private function resetTypesense(Attempt $attempt, string $path, array $state): void
