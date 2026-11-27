@@ -280,6 +280,7 @@ final readonly class Control
         if (isset($for['ref']) && is_int($for['ref'])) {
             $related = $results[$for['ref']] ?? null;
             abort_unless($related instanceof Model, 422, 'Invalid factory relation reference.');
+            $this->assertForRelationMatches($model, $relation, $related);
 
             return $related;
         }
@@ -290,8 +291,10 @@ final readonly class Control
         if (is_string($alias)) {
             $targetClass = $factories[$alias]['model'] ?? null;
             abort_unless(is_string($targetClass) && is_subclass_of($targetClass, Model::class), 422, 'Unknown model alias for factory for().');
+            $resolved = $targetClass::query()->findOrFail($id);
+            $this->assertForRelationMatches($model, $relation, $resolved);
 
-            return $targetClass::query()->findOrFail($id);
+            return $resolved;
         }
 
         if ($relation !== null && method_exists($model, $relation)) {
@@ -302,6 +305,17 @@ final readonly class Control
         }
 
         abort(422, 'Cannot resolve model for factory for(); pass a model created by Rehearsal.');
+    }
+
+    private function assertForRelationMatches(string $model, ?string $relation, Model $resolved): void
+    {
+        if ($relation === null || ! method_exists($model, $relation)) {
+            return;
+        }
+        $rel = (new $model)->{$relation}();
+        if ($rel instanceof BelongsTo && ! $rel instanceof MorphTo) {
+            abort_unless(is_a($resolved, $rel->getRelated()::class), 422, 'Model does not match factory for() relation.');
+        }
     }
 
     private function withFactoryModel(Factory $factory, string $model, Closure $create): mixed
