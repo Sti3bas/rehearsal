@@ -14,17 +14,19 @@ uses(TestCase::class);
 
 beforeEach(function () {
     $this->app->register(ServiceProvider::class);
+    CustomFactoryModel::$hookCalls = 0;
     config(['rehearsal.factories' => [
         'model_paths' => [__DIR__],
         'factory_paths' => [__DIR__],
     ]]);
 });
 
-it('discovers concrete model factories and standalone factories without running definitions', function () {
+it('discovers concrete model factories and standalone factories without running factory code', function () {
     expect(app(Factories::class)->all())->toBe([
         'CustomFactoryModel' => ['model' => CustomFactoryModel::class],
         'StandaloneFactoryModel' => ['model' => StandaloneFactoryModel::class, 'factory' => StandaloneFactory::class],
     ]);
+    expect(CustomFactoryModel::$hookCalls)->toBe(0);
 });
 
 it('merges explicit metadata and aliases and caches discovery once per application', function () {
@@ -56,6 +58,7 @@ it('reuses the managed run snapshot across application boots', function () {
     config(['rehearsal.integrations' => []]);
     try {
         app(Protocol::class)->provision();
+        expect(CustomFactoryModel::$hookCalls)->toBe(0);
         config(['rehearsal.factories.model_paths' => [], 'rehearsal.factories.factory_paths' => []]);
         expect((new Factories)->all())->toBe([])
             ->and((new Factories)->all($run))->toHaveKeys(['CustomFactoryModel', 'StandaloneFactoryModel']);
@@ -68,6 +71,7 @@ it('generates the discovered factory types without per-factory configuration', f
     $path = sys_get_temp_dir().'/rehearsal-discovered-'.bin2hex(random_bytes(8)).'.d.ts';
     try {
         $this->artisan('rehearsal:types', ['path' => $path])->assertSuccessful();
+        expect(CustomFactoryModel::$hookCalls)->toBe(0);
         expect(file_get_contents($path))
             ->toContain('"StandaloneFactoryModel": { "attributes": { "active"?: boolean | null;')
             ->toContain('"model": { "id": number; "active"?: boolean | null; }; "relations": {}; "states": never;')
@@ -83,8 +87,12 @@ final class CustomFactoryModel extends Model
 {
     use HasFactory;
 
+    public static int $hookCalls = 0;
+
     protected static function newFactory(): CustomDiscoveryFactory
     {
+        self::$hookCalls++;
+
         return CustomDiscoveryFactory::new();
     }
 }
@@ -119,6 +127,11 @@ final class StandaloneFactoryModel extends Model
 #[UseModel(StandaloneFactoryModel::class)]
 final class StandaloneFactory extends Factory
 {
+    public function __construct()
+    {
+        throw new LogicException('Discovery must not instantiate a factory.');
+    }
+
     public function definition(): array
     {
         throw new LogicException('Discovery must not evaluate a factory definition.');

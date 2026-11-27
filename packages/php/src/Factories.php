@@ -5,13 +5,17 @@ declare(strict_types=1);
 namespace Sti3bas\Rehearsal;
 
 use Generator;
+use Illuminate\Database\Eloquent\Attributes\UseFactory;
+use Illuminate\Database\Eloquent\Factories\Attributes\UseModel;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Str;
 use PhpToken;
 use ReflectionClass;
 use ReflectionMethod;
+use Throwable;
 
 final class Factories
 {
@@ -40,8 +44,8 @@ final class Factories
         }
         $candidates = [];
         foreach ($this->classes($factoryPaths, Factory::class) as $factory) {
-            $model = (new $factory)->modelName();
-            if (! isset($models[$model]) && is_subclass_of($model, Model::class) && (new ReflectionClass($model))->isInstantiable()) {
+            $model = $this->standaloneModel($factory);
+            if ($model !== null && ! isset($models[$model]) && is_subclass_of($model, Model::class) && (new ReflectionClass($model))->isInstantiable()) {
                 $candidates[$model][$factory] = true;
             }
         }
@@ -88,13 +92,43 @@ final class Factories
 
     private function usesModelFactory(string $model): bool
     {
-        if ((new ReflectionMethod($model, 'newFactory'))->invoke(null) instanceof Factory) {
+        $reflection = new ReflectionClass($model);
+        $hook = $reflection->getMethod('newFactory');
+        $default = new ReflectionMethod(HasFactory::class, 'newFactory');
+        if ($hook->getFileName() !== $default->getFileName() || $hook->getStartLine() !== $default->getStartLine()) {
             return true;
         }
 
-        $factory = Factory::resolveFactoryName($model);
+        $property = $reflection->hasProperty('factory') ? $reflection->getProperty('factory') : null;
+        $attribute = $reflection->getAttributes(UseFactory::class)[0] ?? null;
+        $factory = ($property?->isStatic() && $property->isInitialized() ? $property->getValue() : null)
+            ?? $attribute?->newInstance()->factoryClass
+            ?? Factory::resolveFactoryName($model);
 
-        return is_subclass_of($factory, Factory::class) && (new ReflectionClass($factory))->isInstantiable();
+        return is_string($factory) && is_subclass_of($factory, Factory::class) && (new ReflectionClass($factory))->isInstantiable();
+    }
+
+    private function standaloneModel(string $factory): ?string
+    {
+        $reflection = new ReflectionClass($factory);
+        if ($reflection->getMethod('modelName')->getDeclaringClass()->getName() !== Factory::class) {
+            return null;
+        }
+        $attribute = $reflection->getAttributes(UseModel::class)[0] ?? null;
+        $model = $attribute?->newInstance()->class ?? $reflection->getDefaultProperties()['model'] ?? null;
+        if (is_string($model)) {
+            return $model;
+        }
+
+        try {
+            $namespace = app()->getNamespace();
+        } catch (Throwable) {
+            $namespace = 'App\\';
+        }
+        $relative = Str::replaceLast('Factory', '', Str::replaceFirst(Factory::$namespace, '', $factory));
+        $model = $namespace.'Models\\'.$relative;
+
+        return class_exists($model) ? $model : $namespace.Str::replaceLast('Factory', '', class_basename($factory));
     }
 
     private function classes(array $paths, string $base): Generator

@@ -90,7 +90,7 @@ Rehearsal discovers autoloadable Eloquent models in `app/Models` using Laravel's
 
 Set `factories.model_paths` or `factories.factory_paths` in `config/rehearsal.php` to replace either list of scan directories. Paths can be absolute or relative to the Laravel root. Entries under `factories` can add aliases, override a discovered model, or supply only metadata such as `states`, `relations`, or `types` for an existing alias. Set `factories.discover` to `false` to use only explicitly configured factories.
 
-Managed runs discover factories once at startup and reuse that list across requests. Restart the run to pick up new factories. Type generation discovers factories independently. The factory operation still requires the managed, test-only control plane.
+Managed runs discover factories once at startup and reuse that list across requests. Restart the run to pick up new factories. Type generation discovers factories independently. Discovery does not instantiate factories or call model factory hooks. If a standalone factory determines its model dynamically, register its `model` and `factory` explicitly. The factory operation still requires the managed, test-only control plane.
 
 #### Generate types from your Laravel app
 
