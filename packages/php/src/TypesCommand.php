@@ -322,11 +322,9 @@ final class TypesCommand extends Command
         }
 
         if (Operations::usesPayloadArray($reflection, $rules)) {
-            $docType = PhpDocTypes::paramType($params[0], $reflection, $aliasesByClass, $usedHelpers);
+            $docType = PhpDocTypes::paramDocType($params[0], $reflection, $aliasesByClass, $usedHelpers);
 
-            return in_array($docType, ['Record<string, unknown>', 'unknown[] | Record<string, unknown>', 'unknown'], true)
-                ? 'Record<string, never>'
-                : $docType;
+            return $docType !== null && $docType !== 'unknown' ? $docType : 'Record<string, never>';
         }
 
         $fields = [];

@@ -21,6 +21,25 @@ final class PhpDocTypes
      * @param  array<class-string, string>  $aliasesByClass
      * @param  array<string, true>  $usedHelpers
      */
+    public static function paramDocType(
+        ReflectionParameter $parameter,
+        ReflectionFunctionAbstract $function,
+        array $aliasesByClass,
+        array &$usedHelpers,
+    ): ?string {
+        $doc = $function->getDocComment();
+        if (! is_string($doc)) {
+            return null;
+        }
+        $tag = self::extractParamTag($doc, $parameter->getName());
+
+        return $tag !== null ? self::docToTs($tag, $aliasesByClass, $usedHelpers, forInput: true) : null;
+    }
+
+    /**
+     * @param  array<class-string, string>  $aliasesByClass
+     * @param  array<string, true>  $usedHelpers
+     */
     public static function paramType(
         ReflectionParameter $parameter,
         ReflectionFunctionAbstract $function,
@@ -28,15 +47,9 @@ final class PhpDocTypes
         array &$usedHelpers,
     ): string {
         $native = self::reflectionToTs($parameter->getType(), $aliasesByClass, $usedHelpers, forInput: true);
-        $doc = $function->getDocComment();
-        if (is_string($doc)) {
-            $tag = self::extractParamTag($doc, $parameter->getName());
-            if ($tag !== null) {
-                $parsed = self::docToTs($tag, $aliasesByClass, $usedHelpers, forInput: true);
-                if ($parsed !== null && ($parsed !== 'unknown' || $native === 'unknown')) {
-                    return $parsed;
-                }
-            }
+        $parsed = self::paramDocType($parameter, $function, $aliasesByClass, $usedHelpers);
+        if ($parsed !== null && ($parsed !== 'unknown' || $native === 'unknown')) {
+            return $parsed;
         }
 
         return $native;
@@ -589,15 +602,6 @@ final class PhpDocTypes
         }
         if (is_a($class, DateTimeInterface::class, true)) {
             return $forInput || is_a($class, JsonSerializable::class, true) ? 'string' : 'unknown';
-        }
-        if (! str_contains($class, '\\') && ! class_exists($class)) {
-            $matches = array_values(array_filter(
-                array_keys($aliasesByClass),
-                static fn (string $fqcn) => class_basename($fqcn) === $class,
-            ));
-            if (count($matches) === 1) {
-                $class = $matches[0];
-            }
         }
         if (is_a($class, Model::class, true)) {
             $alias = $aliasesByClass[$class] ?? null;
