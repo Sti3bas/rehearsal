@@ -9,6 +9,7 @@ const serviceHost = process.env.REHEARSAL_E2E_SERVICE_HOST;
 const reverb = process.env.REHEARSAL_E2E_REVERB === "true";
 const ssrPort = process.env.REHEARSAL_E2E_NUXT_PORT;
 const laravel = laravelServer({
+  env: { APP_NAME: "Managed Rehearsal", APP_ENV: "not-allowed" },
   port,
   server: process.env.REHEARSAL_E2E_FRANKENPHP === "true" ? "frankenphp" : "artisan",
   integrations: {

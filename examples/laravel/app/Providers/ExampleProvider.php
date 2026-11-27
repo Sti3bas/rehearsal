@@ -18,7 +18,7 @@ final class ExampleProvider extends ServiceProvider
 {
     public function boot(): void
     {
-        if (! $this->app->environment('playwright')) {
+        if (! $this->app->environment('rehearsal')) {
             return;
         }
 

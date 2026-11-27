@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { constants } from "node:fs";
-import { access, mkdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { delimiter, join, resolve } from "node:path";
 import { privateLaunchPath } from "./transport.js";
 
@@ -10,27 +10,39 @@ const root = process.cwd();
 const port = Number(process.argv[2]);
 const workers = Number(process.argv[3]);
 const host = process.argv[5] ?? "127.0.0.1";
-const environment = process.env.REHEARSAL_MANAGED_APP_ENV ?? "playwright";
+const environment = process.env.REHEARSAL_MANAGED_APP_ENV ?? "rehearsal";
 if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(environment)) throw new Error("Invalid Rehearsal environment name.");
 const run = randomBytes(12).toString("hex");
 const capability = randomBytes(32).toString("hex");
 const launchPath = privateLaunchPath(root, port);
 const runPath = join(root, ".rehearsal", "runs", run);
 
-const env: NodeJS.ProcessEnv = {};
+async function loadOverrides() {
+  const path = process.env.REHEARSAL_MANAGED_ENV_FILE;
+  if (!path) return {};
+  try {
+    return JSON.parse(await readFile(path, "utf8")) as { managed?: NodeJS.ProcessEnv; env?: NodeJS.ProcessEnv };
+  } catch {
+    throw new Error("Could not load Rehearsal's private environment overrides.");
+  }
+}
+
+const overrides = await loadOverrides();
+const managed = { ...process.env, ...overrides.managed };
+const env: NodeJS.ProcessEnv = Object.create(null);
 for (const key of ["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "TZ", "PHP_INI_SCAN_DIR", "LD_LIBRARY_PATH"]) {
   if (process.env[key] !== undefined) env[key] = process.env[key];
 }
 for (const key of ["DB_CONNECTION", "DB_HOST", "DB_PORT", "DB_USERNAME", "DB_PASSWORD", "REHEARSAL_DB_DISPOSABLE"]) {
-  const value = process.env["REHEARSAL_MANAGED_" + key];
+  const value = managed["REHEARSAL_MANAGED_" + key];
   if (value !== undefined) env[key] = value;
 }
-for (const [key, value] of Object.entries(process.env)) {
+for (const [key, value] of Object.entries(managed)) {
   if (/^REHEARSAL_MANAGED_REHEARSAL_INTEGRATION_[A-Z0-9_]+$/.test(key)) {
     env[key.slice("REHEARSAL_MANAGED_".length)] = value;
   }
 }
-Object.assign(env, {
+Object.assign(env, overrides.env, {
   APP_ENV: environment,
   APP_URL: "http://" + host + ":" + port,
   APP_CONFIG_CACHE: join(runPath, "config.php"),
