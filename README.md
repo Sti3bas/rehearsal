@@ -86,7 +86,7 @@ php artisan vendor:publish --tag=rehearsal-config
 
 #### Factory discovery
 
-Rehearsal discovers autoloadable Eloquent models in `app/Models` using Laravel's factory resolution, and looks for standalone Eloquent factories in `database/factories`. Use the exact model basename (for example, `User`). If two models share a basename, define explicit aliases instead. A model's own factory hook takes precedence over a discovered standalone factory. An explicit `factory` class in config overrides both.
+Rehearsal discovers autoloadable Eloquent models in `app/Models` using Laravel's factory resolution, and looks for standalone Eloquent factories in `database/factories`. Use the exact model basename (for example, `User`). If two models share a basename, define explicit aliases instead. A model's own factory hook takes precedence over a discovered standalone factory. An explicit `factory` class in config overrides both and uses the configured model unless the factory declares a model itself.
 
 Set `factories.model_paths` or `factories.factory_paths` in `config/rehearsal.php` to replace either list of scan directories. Paths can be absolute or relative to the Laravel root. Entries under `factories` can add aliases, override a discovered model, or supply only metadata such as `states`, `relations`, or `types` for an existing alias. Set `factories.discover` to `false` to use only explicitly configured factories.
 

@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Database\Eloquent\Attributes\UseFactory;
 use Illuminate\Database\Eloquent\Factories\Attributes\UseModel;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -29,6 +30,7 @@ beforeEach(function () {
 it('discovers concrete model factories and standalone factories without running factory code', function () {
     expect(app(Factories::class)->all())->toBe([
         'CustomFactoryModel' => ['model' => CustomFactoryModel::class],
+        'ExplicitBindingModel' => ['model' => ExplicitBindingModel::class],
         'StandaloneFactoryModel' => ['model' => StandaloneFactoryModel::class, 'factory' => StandaloneFactory::class],
     ]);
     expect(CustomFactoryModel::$hookCalls)->toBe(0);
@@ -66,6 +68,7 @@ it('merges explicit metadata and aliases and caches discovery once per applicati
     $entries = app(Factories::class)->all();
     expect($entries)->toBe([
         'CustomFactoryModel' => ['model' => CustomFactoryModel::class, 'states' => ['special' => 'special']],
+        'ExplicitBindingModel' => ['model' => ExplicitBindingModel::class],
         'StandaloneFactoryModel' => ['model' => CustomFactoryModel::class],
         'OtherAlias' => ['model' => StandaloneFactoryModel::class, 'factory' => StandaloneFactory::class],
     ]);
@@ -109,6 +112,41 @@ it('chooses the correct factory for an alias outside the model scan paths', func
     'explicit factory wins with discovery' => [true, true],
     'explicit factory wins without discovery' => [false, true],
 ]);
+
+it('binds an explicit factory to the configured model without changing its resolver', function () {
+    config([
+        'database.default' => 'factory_test',
+        'database.connections.factory_test' => ['driver' => 'sqlite', 'database' => ':memory:'],
+        'rehearsal.capability' => bin2hex(random_bytes(32)),
+        'rehearsal.factories.discover' => false,
+        'rehearsal.factories.Configured' => [
+            'model' => ExplicitBindingModel::class,
+            'factory' => UnboundDiscoveryFactory::class,
+            'states' => ['named' => 'named'],
+        ],
+    ]);
+    Schema::create('explicit_binding_models', function (Blueprint $table) {
+        $table->id();
+        $table->string('source');
+    });
+    $run = new Run(bin2hex(random_bytes(12)));
+    $this->app->instance(Run::class, $run);
+    $request = Request::create('/_rehearsal/call', 'POST', [
+        'name' => 'factory',
+        'data' => ['items' => [['model' => 'Configured', 'count' => 2, 'states' => ['named'], 'attrs' => ['source' => 'override']]]],
+    ], server: ['HTTP_X_REHEARSAL_CAPABILITY' => config('rehearsal.capability')]);
+
+    UnboundDiscoveryFactory::guessModelNamesUsing(fn () => FactorylessModel::class);
+    try {
+        $response = app(Control::class)->call($request, new Attempt($run, 1, 'test'));
+
+        expect(array_column($response->getData(true)['data'][0], 'source'))->toBe(['override', 'override'])
+            ->and(ExplicitBindingModel::query()->count())->toBe(2)
+            ->and(UnboundDiscoveryFactory::new()->modelName())->toBe(FactorylessModel::class);
+    } finally {
+        Factory::flushState();
+    }
+});
 
 it('reuses the managed run snapshot across application boots', function () {
     $run = new Run(bin2hex(random_bytes(12)));
@@ -203,5 +241,30 @@ final class ResolverMappedFactory extends Factory
     public function definition(): array
     {
         return [];
+    }
+}
+
+#[UseFactory(UnboundDiscoveryFactory::class)]
+final class ExplicitBindingModel extends Model
+{
+    use HasFactory;
+
+    public $timestamps = false;
+}
+
+final class UnboundDiscoveryFactory extends Factory
+{
+    public function definition(): array
+    {
+        return ['source' => 'factory'];
+    }
+
+    public function named(): static
+    {
+        if ($this->modelName() !== ExplicitBindingModel::class) {
+            throw new LogicException('Expected the configured model before applying a state.');
+        }
+
+        return $this->state(['source' => 'named']);
     }
 }
