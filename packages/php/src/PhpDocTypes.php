@@ -7,6 +7,7 @@ namespace Sti3bas\Rehearsal;
 use BackedEnum;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
+use JsonSerializable;
 use ReflectionFunctionAbstract;
 use ReflectionIntersectionType;
 use ReflectionNamedType;
@@ -26,18 +27,19 @@ final class PhpDocTypes
         array $aliasesByClass,
         array &$usedHelpers,
     ): string {
+        $native = self::reflectionToTs($parameter->getType(), $aliasesByClass, $usedHelpers, forInput: true);
         $doc = $function->getDocComment();
         if (is_string($doc)) {
             $tag = self::extractParamTag($doc, $parameter->getName());
             if ($tag !== null) {
                 $parsed = self::docToTs($tag, $aliasesByClass, $usedHelpers, forInput: true);
-                if ($parsed !== null) {
+                if ($parsed !== null && ($parsed !== 'unknown' || $native === 'unknown')) {
                     return $parsed;
                 }
             }
         }
 
-        return self::reflectionToTs($parameter->getType(), $aliasesByClass, $usedHelpers, forInput: true);
+        return $native;
     }
 
     /**
@@ -49,23 +51,23 @@ final class PhpDocTypes
         array $aliasesByClass,
         array &$usedHelpers,
     ): string {
+        $type = $function->getReturnType();
+        $native = $type === null
+            ? 'unknown'
+            : self::reflectionToTs($type, $aliasesByClass, $usedHelpers, forInput: false);
+
         $doc = $function->getDocComment();
         if (is_string($doc)) {
             $tag = self::extractReturnTag($doc);
             if ($tag !== null) {
                 $parsed = self::docToTs($tag, $aliasesByClass, $usedHelpers, forInput: false);
-                if ($parsed !== null) {
+                if ($parsed !== null && ($parsed !== 'unknown' || $native === 'unknown')) {
                     return $parsed;
                 }
             }
         }
 
-        $type = $function->getReturnType();
-        if ($type === null) {
-            return 'unknown';
-        }
-
-        return self::reflectionToTs($type, $aliasesByClass, $usedHelpers, forInput: false);
+        return $native;
     }
 
     /**
@@ -101,7 +103,7 @@ final class PhpDocTypes
             'int', 'float' => 'number',
             'string' => 'string',
             'bool', 'true', 'false' => 'boolean',
-            'array' => 'Record<string, unknown>',
+            'array' => $forInput ? 'unknown[] | Record<string, unknown>' : 'unknown',
             'null', 'void' => 'null',
             'mixed', 'object' => 'unknown',
             default => self::classToTs($name, $aliasesByClass, $usedHelpers, $forInput),
@@ -140,14 +142,8 @@ final class PhpDocTypes
 
     private static function extractParamTag(string $doc, string $paramName): ?string
     {
-        $lines = preg_split('/\r?\n/', $doc) ?: [];
-        foreach ($lines as $line) {
-            $cleaned = trim(preg_replace('/^\s*(?:\/\*\*|\*\/|\*)\s?/', '', $line) ?? '');
-            if (! str_starts_with($cleaned, '@param ')) {
-                continue;
-            }
-            $rest = trim(substr($cleaned, 7));
-            $target = '$'.$paramName;
+        $target = '$'.$paramName;
+        foreach (self::extractTags($doc, '@param') as $rest) {
             $idx = self::findParamVar($rest, $target);
             if ($idx !== null) {
                 $type = trim(substr($rest, 0, $idx));
@@ -161,21 +157,46 @@ final class PhpDocTypes
 
     private static function extractReturnTag(string $doc): ?string
     {
-        $lines = preg_split('/\r?\n/', $doc) ?: [];
-        foreach ($lines as $line) {
-            $cleaned = trim(preg_replace('/^\s*(?:\/\*\*|\*\/|\*)\s?/', '', $line) ?? '');
-            if (! str_starts_with($cleaned, '@return ')) {
-                continue;
+        foreach (self::extractTags($doc, '@return') as $rest) {
+            if ($rest !== '') {
+                return self::stripTrailingDescription($rest);
             }
-            $rest = trim(substr($cleaned, 8));
-            if ($rest === '') {
-                return null;
-            }
-
-            return self::stripTrailingDescription($rest);
         }
 
         return null;
+    }
+
+    /** @return list<string> */
+    private static function extractTags(string $doc, string $tag): array
+    {
+        $lines = preg_split('/\r?\n/', $doc) ?: [];
+        $results = [];
+        $current = null;
+        $prefix = $tag.' ';
+
+        foreach ($lines as $line) {
+            $cleaned = trim(preg_replace('/^\s*(?:\/\*\*|\*\/|\*)\s?/', '', $line) ?? '');
+            if ($cleaned === '' || $cleaned === '/') {
+                continue;
+            }
+            if (str_starts_with($cleaned, '@')) {
+                if ($current !== null) {
+                    $results[] = trim($current);
+                    $current = null;
+                }
+                if (str_starts_with($cleaned, $prefix)) {
+                    $current = trim(substr($cleaned, strlen($prefix)));
+                }
+            } elseif ($current !== null) {
+                $current .= ' '.$cleaned;
+            }
+        }
+
+        if ($current !== null) {
+            $results[] = trim($current);
+        }
+
+        return $results;
     }
 
     private static function findParamVar(string $text, string $target): ?int
@@ -567,7 +588,16 @@ final class PhpDocTypes
             return $cases === [] ? 'never' : implode(' | ', $cases);
         }
         if (is_a($class, DateTimeInterface::class, true)) {
-            return 'string';
+            return $forInput || is_a($class, JsonSerializable::class, true) ? 'string' : 'unknown';
+        }
+        if (! str_contains($class, '\\') && ! class_exists($class)) {
+            $matches = array_values(array_filter(
+                array_keys($aliasesByClass),
+                static fn (string $fqcn) => class_basename($fqcn) === $class,
+            ));
+            if (count($matches) === 1) {
+                $class = $matches[0];
+            }
         }
         if (is_a($class, Model::class, true)) {
             $alias = $aliasesByClass[$class] ?? null;
