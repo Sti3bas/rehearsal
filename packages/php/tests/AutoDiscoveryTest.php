@@ -53,6 +53,41 @@ it('auto-discovers scheduled artisan commands with positional args and options',
 
     config(['rehearsal.schedule' => ['discover' => false, 'manual:only' => ['command' => 'demo:expire']]]);
     expect(array_keys(app(Schedules::class)->all()))->toBe(['manual:only']);
+
+    config(['rehearsal.schedule' => ['discover' => ['command' => 'demo:expire']]]);
+    expect(app(Schedules::class)->all())->toHaveKey('discover');
+});
+
+it('parses space-separated options, repeated array options, apostrophes, and custom artisan paths', function () {
+    $captured = [];
+    Artisan::command('demo:multi {--tag=*} {--hours=24} {--label=}', function () use (&$captured) {
+        $captured[] = [
+            'tags' => $this->option('tag'),
+            'hours' => $this->option('hours'),
+            'label' => $this->option('label'),
+        ];
+    });
+
+    $schedule = app(Schedule::class);
+    $schedule->command("demo:multi --hours 336 --tag=alpha --tag=beta --label='O'\''Reilly'")->daily();
+
+    $this->app->register(ServiceProvider::class);
+
+    $discovered = app(Schedules::class)->all();
+    $name = array_key_first($discovered);
+    expect($name)->not->toBeNull();
+    expect($discovered[$name]['fixed'])->toBe([
+        '--hours' => '336',
+        '--tag' => ['alpha', 'beta'],
+        '--label' => "O'Reilly",
+    ]);
+
+    QueueControl::schedule(['names' => [$name]]);
+    expect($captured)->toBe([[
+        'tags' => ['alpha', 'beta'],
+        'hours' => '336',
+        'label' => "O'Reilly",
+    ]]);
 });
 
 it('auto-discovers #[Operation] classes with rules and types and generates declarations', function () {

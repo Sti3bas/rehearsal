@@ -68,9 +68,16 @@ final class Operations
         }
 
         $configured = $this->configured;
-        $discover = (bool) ($configured['discover'] ?? true);
-        $paths = is_array($configured['paths'] ?? null) ? $configured['paths'] : self::DEFAULT_PATHS;
-        unset($configured['discover'], $configured['paths']);
+        $discover = true;
+        if (array_key_exists('discover', $configured) && is_bool($configured['discover'])) {
+            $discover = $configured['discover'];
+            unset($configured['discover']);
+        }
+        $paths = self::DEFAULT_PATHS;
+        if (array_key_exists('paths', $configured) && is_array($configured['paths']) && array_is_list($configured['paths'])) {
+            $paths = $configured['paths'];
+            unset($configured['paths']);
+        }
 
         $entries = $discover ? $this->discover($paths) : [];
 
@@ -110,13 +117,14 @@ final class Operations
             }
             /** @var Operation $attribute */
             $attribute = $attributes[0]->newInstance();
+            $instance = null;
             $rules = $attribute->rules;
             if ($rules === [] && $reflection->hasMethod('rules')) {
                 $rulesMethod = $reflection->getMethod('rules');
                 if ($rulesMethod->isPublic()) {
                     $rules = $rulesMethod->isStatic()
                         ? $rulesMethod->invoke(null)
-                        : $rulesMethod->invoke($reflection->newInstanceWithoutConstructor());
+                        : $rulesMethod->invoke($instance ??= app($class));
                 }
             }
             $types = $attribute->types;
@@ -125,8 +133,12 @@ final class Operations
                 if ($typesMethod->isPublic()) {
                     $types = $typesMethod->isStatic()
                         ? $typesMethod->invoke(null)
-                        : $typesMethod->invoke($reflection->newInstanceWithoutConstructor());
+                        : $typesMethod->invoke($instance ??= app($class));
                 }
+            }
+
+            if (isset($entries[$attribute->name])) {
+                throw new LogicException("Rehearsal operation [{$attribute->name}] is already registered.");
             }
 
             $entries[$attribute->name] = [

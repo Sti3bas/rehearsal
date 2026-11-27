@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sti3bas\Rehearsal;
 
+use Illuminate\Console\Application as ArtisanApplication;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
 use Illuminate\Support\Facades\Artisan;
@@ -16,8 +17,8 @@ final class Schedules
     {
         $configured = config('rehearsal.schedule', []);
         $discover = true;
-        if (is_array($configured) && array_key_exists('discover', $configured)) {
-            $discover = (bool) $configured['discover'];
+        if (is_array($configured) && array_key_exists('discover', $configured) && is_bool($configured['discover'])) {
+            $discover = $configured['discover'];
             unset($configured['discover']);
         }
 
@@ -72,7 +73,9 @@ final class Schedules
      */
     private function parseEventCommand(string $command, array $commands): ?array
     {
-        if (preg_match('/(?:^|\s)(?:["\']?)artisan(?:["\']?)\s+(.+)$/', $command, $match) !== 1) {
+        $binary = trim(ArtisanApplication::artisanBinary(), "\"'");
+        $pattern = '/(?:^|\s)(?:["\']?)(?:'.preg_quote($binary, '/').'|(?:[^\s"\']*[\/\\\\])?artisan)(?:["\']?)\s+(.+)$/';
+        if (preg_match($pattern, $command, $match) !== 1) {
             return null;
         }
 
@@ -89,23 +92,46 @@ final class Schedules
 
         $fixed = [];
         $displayTokens = [$commandName];
+        $count = count($tokens);
 
-        foreach ($tokens as $token) {
+        for ($i = 0; $i < $count; $i++) {
+            $token = $tokens[$i];
+
             if (str_starts_with($token, '--')) {
                 if (str_contains($token, '=')) {
                     [$opt, $val] = explode('=', $token, 2);
-                    $fixed[$opt] = $val;
+                    $optName = substr($opt, 2);
+                    $isArray = $definition !== null && $definition->hasOption($optName) && $definition->getOption($optName)->isArray();
+                    $this->appendOption($fixed, $opt, $val, $isArray);
+                    $displayTokens[] = $token;
                 } else {
-                    $fixed[$token] = true;
+                    $optName = substr($token, 2);
+                    $option = $definition !== null && $definition->hasOption($optName) ? $definition->getOption($optName) : null;
+                    if ($option !== null && $option->acceptValue() && $i + 1 < $count && ! str_starts_with($tokens[$i + 1], '-')) {
+                        $val = $tokens[++$i];
+                        $this->appendOption($fixed, $token, $val, $option->isArray());
+                        $displayTokens[] = "{$token}={$val}";
+                    } else {
+                        $fixed[$token] = true;
+                        $displayTokens[] = $token;
+                    }
                 }
-                $displayTokens[] = $token;
 
                 continue;
             }
 
             if (str_starts_with($token, '-') && strlen($token) > 1) {
-                $fixed[$token] = true;
-                $displayTokens[] = $token;
+                $shortName = substr($token, 1);
+                $option = $definition !== null && $definition->hasShortcut($shortName) ? $definition->getOptionForShortcut($shortName) : null;
+                if ($option !== null && $option->acceptValue() && $i + 1 < $count && ! str_starts_with($tokens[$i + 1], '-')) {
+                    $val = $tokens[++$i];
+                    $this->appendOption($fixed, '--'.$option->getName(), $val, $option->isArray());
+                    $displayTokens[] = $token;
+                    $displayTokens[] = $val;
+                } else {
+                    $fixed[$token] = true;
+                    $displayTokens[] = $token;
+                }
 
                 continue;
             }
@@ -113,17 +139,24 @@ final class Schedules
             if ($definition !== null && str_contains($token, '=')) {
                 [$arg, $val] = explode('=', $token, 2);
                 if ($definition->hasArgument($arg)) {
-                    $fixed[$arg] = $val;
+                    $isArray = $definition->getArgument($arg)->isArray();
+                    $this->appendOption($fixed, $arg, $val, $isArray);
                     $displayTokens[] = $val;
-                    $positionalIndex++;
+                    if (! $isArray) {
+                        $positionalIndex++;
+                    }
 
                     continue;
                 }
             }
 
             if (isset($positionalNames[$positionalIndex])) {
-                $fixed[$positionalNames[$positionalIndex]] = $token;
-                $positionalIndex++;
+                $argName = $positionalNames[$positionalIndex];
+                $isArray = $definition !== null && $definition->getArgument($argName)->isArray();
+                $this->appendOption($fixed, $argName, $token, $isArray);
+                if (! $isArray) {
+                    $positionalIndex++;
+                }
                 $displayTokens[] = $token;
 
                 continue;
@@ -143,17 +176,83 @@ final class Schedules
         return ['name' => $name, 'entry' => $entry];
     }
 
+    /**
+     * @param  array<string, mixed>  $fixed
+     */
+    private function appendOption(array &$fixed, string $key, string $value, bool $isArray): void
+    {
+        if ($isArray) {
+            $existing = $fixed[$key] ?? [];
+            $fixed[$key] = is_array($existing) ? [...$existing, $value] : [$existing, $value];
+
+            return;
+        }
+
+        if (array_key_exists($key, $fixed)) {
+            $fixed[$key] = is_array($fixed[$key]) ? [...$fixed[$key], $value] : [$fixed[$key], $value];
+
+            return;
+        }
+
+        $fixed[$key] = $value;
+    }
+
     /** @return list<string> */
     private function tokenize(string $input): array
     {
-        preg_match_all('/(?:[^"\'\s]|"(?:\\\\.|[^"\\\\])*"|\'[^\']*\')+/', $input, $matches);
         $tokens = [];
-        foreach ($matches[0] as $raw) {
-            $tokens[] = preg_replace_callback(
-                '/"((?:\\\\.|[^"\\\\])*)"|\'([^\']*)\'/',
-                static fn (array $part): string => $part[1] !== '' ? stripcslashes($part[1]) : ($part[2] ?? ''),
-                $raw,
-            );
+        $current = '';
+        $inToken = false;
+        $quote = null;
+        $length = strlen($input);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $input[$i];
+
+            if ($quote === "'") {
+                if ($char === "'") {
+                    $quote = null;
+                } else {
+                    $current .= $char;
+                }
+
+                continue;
+            }
+
+            if ($quote === '"') {
+                if ($char === '"') {
+                    $quote = null;
+                } elseif ($char === '\\' && $i + 1 < $length && in_array($input[$i + 1], ['"', '\\', '$', '`'], true)) {
+                    $current .= $input[++$i];
+                } else {
+                    $current .= $char;
+                }
+
+                continue;
+            }
+
+            if (ctype_space($char)) {
+                if ($inToken) {
+                    $tokens[] = $current;
+                    $current = '';
+                    $inToken = false;
+                }
+
+                continue;
+            }
+
+            $inToken = true;
+            if ($char === "'" || $char === '"') {
+                $quote = $char;
+            } elseif ($char === '\\' && $i + 1 < $length) {
+                $current .= $input[++$i];
+            } else {
+                $current .= $char;
+            }
+        }
+
+        if ($inToken) {
+            $tokens[] = $current;
         }
 
         return $tokens;

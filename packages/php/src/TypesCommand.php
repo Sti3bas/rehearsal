@@ -6,11 +6,14 @@ namespace Sti3bas\Rehearsal;
 
 use BackedEnum;
 use Closure;
+use DateTimeInterface;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
 use ReflectionFunction;
 use ReflectionMethod;
+use Throwable;
 
 final class TypesCommand extends Command
 {
@@ -37,7 +40,7 @@ final class TypesCommand extends Command
         $usedHelpers = [];
         $factories = [];
         foreach ($allFactories as $alias => $definition) {
-            $factories[$alias] = $this->factory($definition, $registry->states($definition), $aliasesByClass, $usedHelpers);
+            $factories[$alias] = $this->factory($definition, $registry->states($definition), $aliasesByClass, $usedHelpers, $registry->factoryClass($definition));
         }
         $calls = [];
         foreach ($operations->typeDefinitions() as $name => $definition) {
@@ -82,7 +85,7 @@ final class TypesCommand extends Command
      * @param  array<string, string>  $aliasesByClass
      * @param  array<string, true>  $usedHelpers
      */
-    private function factory(array $definition, array $states, array $aliasesByClass, array &$usedHelpers): string
+    private function factory(array $definition, array $states, array $aliasesByClass, array &$usedHelpers, ?string $factoryClass = null): string
     {
         $class = $definition['model'];
         /** @var Model $model */
@@ -91,6 +94,9 @@ final class TypesCommand extends Command
             ...$model->getFillable(),
             ...array_keys($model->getAttributes()),
         ]), 'unknown');
+        foreach ($this->factoryDefinitionAttributes($factoryClass) as $column => $type) {
+            $attributes[$column] = $type;
+        }
         foreach ($model->getDates() as $column) {
             $attributes[$column] = 'string | null';
         }
@@ -99,6 +105,16 @@ final class TypesCommand extends Command
             foreach (Schema::connection($database)->getColumns($model->getTable()) as $column) {
                 $type = $this->columnType(strtolower($column['type_name']));
                 $attributes[$column['name']] = $column['nullable'] ? "$type | null" : $type;
+            }
+        } else {
+            try {
+                if (Schema::hasTable($model->getTable())) {
+                    foreach (Schema::getColumns($model->getTable()) as $column) {
+                        $type = $this->columnType(strtolower($column['type_name']));
+                        $attributes[$column['name']] = $column['nullable'] ? "$type | null" : $type;
+                    }
+                }
+            } catch (Throwable) {
             }
         }
         $attributes[$model->getKeyName()] = $this->phpType($model->getKeyType());
@@ -267,6 +283,38 @@ final class TypesCommand extends Command
             'array', 'json', 'object' => 'unknown[] | Record<string, unknown>',
             default => 'unknown',
         };
+    }
+
+    /** @return array<string, string> */
+    private function factoryDefinitionAttributes(?string $factoryClass): array
+    {
+        if ($factoryClass === null || ! is_subclass_of($factoryClass, Factory::class)) {
+            return [];
+        }
+
+        try {
+            $raw = $factoryClass::new()->definition();
+        } catch (Throwable) {
+            return [];
+        }
+
+        $attributes = [];
+        foreach ($raw as $column => $value) {
+            if (! is_string($column)) {
+                continue;
+            }
+            $attributes[$column] = match (true) {
+                is_bool($value) => 'boolean | null',
+                is_int($value), is_float($value) => 'number | null',
+                is_string($value), $value instanceof DateTimeInterface => 'string | null',
+                is_array($value) => 'unknown[] | Record<string, unknown> | null',
+                $value instanceof BackedEnum => $this->phpType($value::class).' | null',
+                $value instanceof Factory => 'number | string | null',
+                default => 'unknown',
+            };
+        }
+
+        return $attributes;
     }
 
     private function columnType(string $type): string
