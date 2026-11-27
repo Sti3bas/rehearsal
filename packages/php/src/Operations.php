@@ -16,6 +16,8 @@ use Illuminate\Support\Str;
 use LogicException;
 use ReflectionClass;
 use ReflectionEnum;
+use ReflectionFunction;
+use ReflectionFunctionAbstract;
 use ReflectionMethod;
 use ReflectionNamedType;
 use ReflectionParameter;
@@ -72,11 +74,19 @@ final class Operations
 
         abort_unless(isset($this->entries[$name]), 404, 'Rehearsal operation is not registered.');
         [$rules, $handler] = $this->entries[$name];
+        $validated = $rules !== [] ? Validator::validate($data, $rules) : $data;
+        $reflection = new ReflectionFunction($handler);
 
-        return $handler(Validator::validate($data, $rules));
+        if (self::usesPayloadArray($reflection, $rules)) {
+            return $reflection->getNumberOfParameters() === 0
+                ? $reflection->invoke()
+                : $reflection->invoke($validated);
+        }
+
+        return $reflection->invokeArgs($this->bindParameters($reflection, $validated));
     }
 
-    public static function usesPayloadArray(ReflectionMethod $method, array $rules): bool
+    public static function usesPayloadArray(ReflectionFunctionAbstract $method, array $rules): bool
     {
         $params = $method->getParameters();
         if (count($params) === 0) {
@@ -87,8 +97,11 @@ final class Operations
         }
         $type = $params[0]->getType();
         $isArrayParam = $type === null || ($type instanceof ReflectionNamedType && $type->getName() === 'array');
+        if (! $isArrayParam) {
+            return false;
+        }
 
-        return $isArrayParam && ($method->getName() === '__invoke' || $rules !== []);
+        return ! ($method instanceof ReflectionMethod) || $method->getName() === '__invoke';
     }
 
     /** @return array<string, array{rules: array<string, mixed>, handler: class-string, method: string, types: array<string, string>}> */
@@ -210,7 +223,7 @@ final class Operations
     }
 
     /** @return list<mixed> */
-    private function bindParameters(ReflectionMethod $method, array $data): array
+    private function bindParameters(ReflectionFunctionAbstract $method, array $data): array
     {
         $args = [];
         foreach ($method->getParameters() as $param) {
@@ -269,6 +282,8 @@ final class Operations
             'float' => is_int($value) || is_float($value) || is_numeric($value) ? [(float) $value] : null,
             'string' => is_string($value) ? [$value] : null,
             'bool' => is_bool($value) ? [$value] : null,
+            'true' => $value === true ? [true] : null,
+            'false' => $value === false ? [false] : null,
             'array' => is_array($value) ? [$value] : null,
             default => $this->tryCoerceObject($typeName, $value),
         };
