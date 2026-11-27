@@ -1,12 +1,29 @@
-import { mkdir, readdir, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import { expect, test } from "@sti3bas/rehearsal";
+import { exec } from "node:child_process";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { promisify } from "node:util";
+import { expect, laravelServer, test } from "@sti3bas/rehearsal";
 
 const collision = "same-address@example.test";
 
 test("uses the managed rehearsal environment and forwards Laravel env values", async ({ page }) => {
   const response = await page.request.get("/probe/environment");
   expect(await response.json()).toEqual({ environment: "rehearsal", name: "Managed Rehearsal" });
+});
+
+test("preserves private overrides when the same webServer config launches twice", async () => {
+  const root = await mkdtemp(join(tmpdir(), "rehearsal-relaunch-"));
+  try {
+    await writeFile(join(root, ".env.rehearsal"), "");
+    await writeFile(join(root, "artisan"), "<?php if ($argv[1] === 'serve' && getenv('APP_NAME') !== 'Repeated launch') exit(1);");
+    const { command, cwd, env } = laravelServer({ cwd: root, env: { APP_NAME: "Repeated launch" } });
+    const launch = () => promisify(exec)(command, { cwd, env: { ...process.env, ...env } });
+    await launch();
+    await launch();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("creates discovered models and rejects unregistered factory states", async ({ laravel }) => {

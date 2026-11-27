@@ -19,10 +19,10 @@ function quote(value: string) {
   return "'" + value.replaceAll("'", "'\\''") + "'";
 }
 
-const pendingOverrides = new Set<string>();
+const overrideDirectories = new Set<string>();
 
-function removeUnconsumedOverrides() {
-  for (const directory of pendingOverrides) {
+function removeOverrides() {
+  for (const directory of overrideDirectories) {
     try { rmSync(directory, { recursive: true, force: true }); } catch { /* best effort at exit */ }
   }
 }
@@ -36,8 +36,8 @@ function writeOverrides(overrides: string) {
     rmSync(directory, { recursive: true, force: true });
     throw error;
   }
-  if (pendingOverrides.size === 0) process.once("exit", removeUnconsumedOverrides);
-  pendingOverrides.add(directory);
+  if (overrideDirectories.size === 0) process.once("exit", removeOverrides);
+  overrideDirectories.add(directory);
   return path;
 }
 

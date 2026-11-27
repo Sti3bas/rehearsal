@@ -24,8 +24,6 @@ async function loadOverrides() {
     return JSON.parse(await readFile(path, "utf8")) as { managed?: NodeJS.ProcessEnv; env?: NodeJS.ProcessEnv };
   } catch {
     throw new Error("Could not load Rehearsal's private environment overrides.");
-  } finally {
-    await rm(path, { force: true });
   }
 }
 
