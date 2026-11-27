@@ -139,12 +139,20 @@ final class Factories
             return $model;
         }
 
+        $properties = $reflection->getStaticProperties();
+        $resolvers = $properties['modelNameResolvers'] ?? [];
+        if (isset($resolvers[$factory]) || isset($resolvers[Factory::class]) || isset($properties['modelNameResolver'])
+            || $reflection->getConstructor()?->getDeclaringClass()->getName() !== Factory::class
+            || $reflection->getMethod('appNamespace')->getDeclaringClass()->getName() !== Factory::class) {
+            return null;
+        }
+
         try {
             $namespace = app()->getNamespace();
         } catch (Throwable) {
             $namespace = 'App\\';
         }
-        $relative = Str::replaceLast('Factory', '', Str::replaceFirst(Factory::$namespace, '', $factory));
+        $relative = Str::replaceLast('Factory', '', Str::replaceFirst($factory::$namespace, '', $factory));
         $model = $namespace.'Models\\'.$relative;
 
         return class_exists($model) ? $model : $namespace.Str::replaceLast('Factory', '', class_basename($factory));

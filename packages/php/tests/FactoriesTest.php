@@ -34,6 +34,29 @@ it('discovers concrete model factories and standalone factories without running 
     expect(CustomFactoryModel::$hookCalls)->toBe(0);
 });
 
+it('skips standalone mappings that require a custom Laravel resolver without calling it', function () {
+    $namespace = 'RehearsalResolverFixtures\\';
+    (new ReflectionProperty($this->app, 'namespace'))->setValue($this->app, $namespace);
+    class_alias(StandaloneFactoryModel::class, $namespace.'Models\\ResolverMapped');
+    expect((new Factories)->all())->toHaveKey('ResolverMapped');
+
+    $calls = 0;
+    Factory::guessModelNamesUsing(function () use (&$calls) {
+        $calls++;
+
+        return FactorylessModel::class;
+    });
+    try {
+        expect((new Factories)->all())
+            ->not->toHaveKey('ResolverMapped')
+            ->not->toHaveKey('FactorylessModel')
+            ->toHaveKey('StandaloneFactoryModel');
+        expect($calls)->toBe(0);
+    } finally {
+        Factory::flushState();
+    }
+});
+
 it('merges explicit metadata and aliases and caches discovery once per application', function () {
     config([
         'rehearsal.factories.CustomFactoryModel' => ['states' => ['special' => 'special']],
@@ -172,5 +195,13 @@ final class StandaloneFactory extends Factory
     public function definition(): array
     {
         throw new LogicException('Discovery must not evaluate a factory definition.');
+    }
+}
+
+final class ResolverMappedFactory extends Factory
+{
+    public function definition(): array
+    {
+        return [];
     }
 }
