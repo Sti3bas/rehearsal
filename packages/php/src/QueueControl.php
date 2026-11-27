@@ -125,12 +125,23 @@ final class QueueControl
         }
 
         $queues = [];
-        $default = config('queue.connections.database.queue', 'default');
-        if (is_string($default) && $default !== '') {
-            $queues[] = $default;
-        }
+        $push = static function (mixed $value) use (&$queues): void {
+            foreach ((array) $value as $entry) {
+                if (! is_string($entry)) {
+                    continue;
+                }
+                foreach (explode(',', $entry) as $name) {
+                    $name = trim($name);
+                    if ($name !== '') {
+                        $queues[] = $name;
+                    }
+                }
+            }
+        };
 
-        $collect = static function (mixed $supervisors) use (&$queues): void {
+        $push(config('queue.connections.database.queue', 'default'));
+
+        $collect = static function (mixed $supervisors) use ($push): void {
             if (! is_array($supervisors)) {
                 return;
             }
@@ -138,11 +149,7 @@ final class QueueControl
                 if (! is_array($supervisor) || ! isset($supervisor['queue'])) {
                     continue;
                 }
-                foreach ((array) $supervisor['queue'] as $queue) {
-                    if (is_string($queue) && $queue !== '') {
-                        $queues[] = $queue;
-                    }
-                }
+                $push($supervisor['queue']);
             }
         };
 
