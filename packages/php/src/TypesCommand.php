@@ -323,8 +323,15 @@ final class TypesCommand extends Command
         ];
         $originalConnections = config('database.connections', []);
         $sandboxed = [$connection => $memoryConfig];
-        foreach (array_keys(is_array($originalConnections) ? $originalConnections : []) as $name) {
+        $sandboxedNames = [];
+        foreach (is_array($originalConnections) ? $originalConnections : [] as $name => $cfg) {
+            if (is_array($cfg) && ($cfg['driver'] ?? null) === 'sqlite' && ($cfg['database'] ?? null) === ':memory:') {
+                $sandboxed[$name] = $cfg;
+
+                continue;
+            }
             $sandboxed[$name] = $memoryConfig;
+            $sandboxedNames[] = $name;
             DB::purge($name);
         }
         config(['database.connections' => $sandboxed]);
@@ -343,7 +350,7 @@ final class TypesCommand extends Command
             $restored = is_array($originalConnections) ? $originalConnections : [];
             $restored[$connection] = $memoryConfig;
             config(['database.connections' => $restored]);
-            foreach (array_keys(is_array($originalConnections) ? $originalConnections : []) as $name) {
+            foreach ($sandboxedNames as $name) {
                 DB::purge($name);
             }
         }

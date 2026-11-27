@@ -113,7 +113,7 @@ const [seller, listings] = await laravel.factory([
 ]);
 ```
 
-- Factory properties are inferred from Eloquent fillable names, casts, defaults, and `@property` tags. Pass `--database=sqlite` (or another **disposable, migrated** named connection) to also read the column names, types, and nullability. Without that flag the generator does not inspect the database. Add a factory's `types.attributes` or `types.model` map of property names to TypeScript type expressions when inference is incomplete, and list guaranteed result fields in `types.required`. Inferred results omit hidden fields; custom overrides should describe the actual serialized JSON.
+- Factory properties are inferred from Eloquent fillable names, casts, defaults, `@property` tags, and column metadata (reading the model's connection when migrated, or falling back to an ephemeral in-memory SQLite migration of `database/migrations`). Pass `--database=sqlite` (or another **disposable, migrated** named connection) to read columns from a specific connection explicitly. Add a factory's `types.attributes` or `types.model` map of property names to TypeScript type expressions when inference is incomplete, and list guaranteed result fields in `types.required`. Inferred results omit hidden fields; custom overrides should describe the actual serialized JSON.
 - Register a batch relation with `'relations' => ['seller' => 'User']` on the `Listing` factory. Use an Eloquent `belongsTo` method name and the related factory alias. `refs` accepts a zero-based index of an earlier **single** result, which supplies the foreign key for all records in the referring item. The server validates the order, alias, and relation.
 - `laravel.call` types named operations, including those registered by a provider. Input inference handles simple validation rules and output inference handles basic PHP return types. For nested objects, conditional rules, or custom resources, specify `'types' => ['input' => '{ id: number }', 'output' => '{ status: string }']` in the operation config, or pass the same map as the fourth argument to `Operations::register`. `laravel.operation<T>` remains available for dynamic or manually typed calls. Artisan aliases can likewise declare `types.input`; schedule names and server fault paths are inferred directly from their allowlists.
 
@@ -206,9 +206,7 @@ await laravel.queue.drainUntil(async () => {
 await laravel.schedule.run(["expire-listings"], { drain: { queues: ["default"] } });
 ```
 
-In `config/rehearsal.php`, register scheduled commands as
-`'schedule' => ['expire-listings' => ['command' => 'listings:expire']]`.
-An entry may include trusted `fixed` Artisan arguments. The helper runs only the named tasks once, in the attempt's app and clock; it does not evaluate cron timing or start a scheduler daemon. Omit `drain` to leave queued work pending.
+Scheduled Artisan commands registered in Laravel's `Schedule` (e.g. `routes/console.php`) are discovered automatically by default (`'schedule' => ['discover' => true]`). You can still add explicit aliases or override/exclude discovered entries (`'some:command' => false`) in `config/rehearsal.php`. The helper runs only the named tasks once, in the attempt's app and clock; it does not evaluate cron timing or start a scheduler daemon. Omit `drain` to leave queued work pending.
 
 ### How isolation works
 
