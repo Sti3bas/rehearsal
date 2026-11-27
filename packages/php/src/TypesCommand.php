@@ -18,7 +18,7 @@ final class TypesCommand extends Command
 
     protected $description = 'Generate TypeScript declarations for this application’s Rehearsal configuration';
 
-    public function handle(Operations $operations): int
+    public function handle(Operations $operations, Factories $registry): int
     {
         $path = $this->argument('path');
         if (! str_ends_with($path, '.d.ts')) {
@@ -28,7 +28,7 @@ final class TypesCommand extends Command
         }
 
         $factories = [];
-        foreach (config('rehearsal.factories') as $alias => $definition) {
+        foreach ($registry->all() as $alias => $definition) {
             $factories[$alias] = $this->factory($definition);
         }
         $calls = [];

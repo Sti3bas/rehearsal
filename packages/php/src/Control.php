@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sti3bas\Rehearsal;
 
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Http\JsonResponse;
@@ -16,7 +17,7 @@ use Illuminate\Validation\Rule;
 
 final readonly class Control
 {
-    public function __construct(private Protocol $protocol, private Operations $operations) {}
+    public function __construct(private Protocol $protocol, private Operations $operations, private Factories $factories) {}
 
     public function ready(): JsonResponse
     {
@@ -79,7 +80,7 @@ final readonly class Control
 
     private function factory(array $input): array
     {
-        $factories = config('rehearsal.factories');
+        $factories = $this->factories->all($this->protocol->run);
         $data = Validator::validate($input, [
             'items' => 'required|array|list|min:1|max:100',
             'items.*' => 'required|array:model,attrs,states,count,refs',
@@ -97,9 +98,16 @@ final readonly class Control
             $results = [];
             foreach ($data['items'] as $item) {
                 $definition = $factories[$item['model']];
-                $model = $definition['model'];
-                abort_unless(is_subclass_of($model, Model::class) && is_callable([$model, 'factory']), 422);
-                $factory = $model::factory();
+                $model = $definition['model'] ?? '';
+                abort_unless(is_subclass_of($model, Model::class), 422);
+                if (isset($definition['factory'])) {
+                    $class = $definition['factory'];
+                    abort_unless(is_subclass_of($class, Factory::class), 422);
+                    $factory = $class::new();
+                } else {
+                    abort_unless(is_callable([$model, 'factory']), 422);
+                    $factory = $model::factory();
+                }
                 foreach ($item['states'] ?? [] as $state) {
                     $method = $definition['states'][$state] ?? null;
                     abort_unless(is_string($method), 422, 'Factory state is not registered.');
