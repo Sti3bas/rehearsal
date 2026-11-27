@@ -11,7 +11,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Laravel\Scout\EngineManager;
+use Laravel\Scout\Searchable;
 use Meilisearch\Client;
+use ReflectionClass;
 use RuntimeException;
 
 final class Scout implements Integration, ClientMetadata
@@ -40,7 +42,7 @@ final class Scout implements Integration, ClientMetadata
         if (! isset($state['key']['value'])) {
             throw new RuntimeException('Rehearsal Scout has no scoped key for this slot.');
         }
-        $origin = config('rehearsal.scout.origin');
+        $origin = $this->origin();
         $parts = LocalService::origin($origin);
         if ($engine === 'meilisearch') {
             config(['scout.meilisearch.host' => $origin, 'scout.meilisearch.key' => $state['key']['value']]);
@@ -92,9 +94,9 @@ final class Scout implements Integration, ClientMetadata
             $this->release($attempt->run, $path);
         }
 
-        $models = config('rehearsal.scout.models', []);
+        $models = $this->models($attempt, $originalPrefix);
         if ($models === []) {
-            throw new RuntimeException('Rehearsal Scout requires an explicit list of searchable models.');
+            throw new RuntimeException('Rehearsal Scout requires at least one searchable model.');
         }
         $state = ['indexes' => []];
         $names = [];
@@ -166,7 +168,7 @@ final class Scout implements Integration, ClientMetadata
 
         return [
             'engine' => 'typesense',
-            'origin' => config('rehearsal.scout.origin'),
+            'origin' => $this->origin(),
             'collectionPrefix' => $this->prefix($attempt),
             'searchKey' => $this->read($attempt->path('scout.json'))['searchKey']['value'],
         ];
@@ -189,12 +191,12 @@ final class Scout implements Integration, ClientMetadata
     private function resetTypesense(Attempt $attempt, string $path, array $state): void
     {
         $baseline = config('rehearsal.scout.baseline_models', []);
-        $models = config('rehearsal.scout.models', []);
+        $models = $this->models($attempt, '');
         if (! is_array($baseline) || array_diff($baseline, $models)) {
             throw new RuntimeException('Typesense baseline models must be included in the configured Scout models.');
         }
         if ($baseline !== []) {
-            $integrations = array_values(config('rehearsal.integrations'));
+            $integrations = array_values(app(Integrations::class)->classes());
             $beforeScout = array_slice($integrations, 0, (int) array_search(self::class, $integrations, true));
             if (! in_array(Database::class, $beforeScout, true)) {
                 throw new RuntimeException('Typesense baseline import requires the Rehearsal database integration before Scout.');
@@ -248,15 +250,153 @@ final class Scout implements Integration, ClientMetadata
 
     private function api(): PendingRequest
     {
-        $origin = config('rehearsal.scout.origin');
+        $origin = $this->origin();
         LocalService::origin($origin);
-        $key = config('rehearsal.scout.admin_key');
+        $key = $this->adminKey();
         if (! is_string($key) || $key === '') {
             throw new RuntimeException('Rehearsal Scout requires a disposable service admin key.');
         }
         $request = Http::baseUrl($origin)->acceptJson()->withoutRedirecting()->timeout(5);
 
         return $this->engine() === 'meilisearch' ? $request->withToken($key) : $request->withHeader('X-TYPESENSE-API-KEY', $key);
+    }
+
+    private function origin(): ?string
+    {
+        $origin = config('rehearsal.scout.origin');
+        if (is_string($origin) && $origin !== '') {
+            return $origin;
+        }
+        if ($this->engine() === 'meilisearch') {
+            $host = config('scout.meilisearch.host');
+
+            return is_string($host) && $host !== '' ? $host : null;
+        }
+        $node = config('scout.typesense.client-settings.nodes.0');
+        if (is_array($node) && is_string($node['host'] ?? null) && $node['host'] !== '') {
+            $protocol = is_string($node['protocol'] ?? null) && $node['protocol'] !== '' ? $node['protocol'] : 'http';
+            $port = isset($node['port']) && $node['port'] !== '' ? ':'.$node['port'] : '';
+
+            return $protocol.'://'.$node['host'].$port;
+        }
+
+        return null;
+    }
+
+    private function adminKey(): ?string
+    {
+        $key = config('rehearsal.scout.admin_key');
+        if (is_string($key) && $key !== '') {
+            return $key;
+        }
+        $fallback = $this->engine() === 'meilisearch'
+            ? config('scout.meilisearch.key')
+            : config('scout.typesense.client-settings.api_key');
+
+        return is_string($fallback) && $fallback !== '' ? $fallback : null;
+    }
+
+    /** @return list<class-string> */
+    private function models(Attempt $attempt, string $originalPrefix): array
+    {
+        $configured = config('rehearsal.scout.models', []);
+        if (! is_array($configured)) {
+            return [];
+        }
+
+        $discover = is_bool($configured['discover'] ?? null) ? $configured['discover'] : false;
+        $paths = is_array($configured['paths'] ?? null)
+            ? $configured['paths']
+            : ['app/Models', ...ClassDiscovery::DEFAULT_HELPER_PATHS];
+
+        $explicit = [];
+        $disabled = [];
+        foreach ($configured as $key => $value) {
+            if (($key === 'discover' && is_bool($value)) || ($key === 'paths' && is_array($value))) {
+                continue;
+            }
+            if ($value === false && is_string($key)) {
+                $disabled[$key] = true;
+
+                continue;
+            }
+            if (is_string($value)) {
+                $explicit[] = $value;
+            }
+        }
+
+        if (! $discover) {
+            return array_values(array_unique($explicit));
+        }
+
+        $discovered = [];
+        foreach (ClassDiscovery::classes($paths) as $class) {
+            if (isset($disabled[$class])) {
+                continue;
+            }
+            $reflection = new ReflectionClass($class);
+            if (! $reflection->isInstantiable()) {
+                continue;
+            }
+            if (! in_array(Searchable::class, class_uses_recursive($class), true)) {
+                continue;
+            }
+            $discovered[] = $class;
+        }
+
+        $all = array_values(array_unique([...$explicit, ...$discovered]));
+
+        return $this->engine() === 'typesense' ? $this->sortTypesenseModels($all, $attempt, $originalPrefix) : $all;
+    }
+
+    /**
+     * @param  list<class-string>  $models
+     * @return list<class-string>
+     */
+    private function sortTypesenseModels(array $models, Attempt $attempt, string $originalPrefix): array
+    {
+        $prefix = $this->prefix($attempt);
+        $byName = [];
+        $refs = [];
+        foreach ($models as $class) {
+            $model = new $class;
+            $name = $model->searchableAs();
+            $logical = str_starts_with($name, $prefix) ? substr($name, strlen($prefix)) : $name;
+            $byName[$logical] = $class;
+            $byName[$originalPrefix.$logical] = $class;
+            $byName[$name] = $class;
+            $schema = method_exists($model, 'typesenseCollectionSchema') ? $model->typesenseCollectionSchema()
+                : config('scout.typesense.model-settings.'.$class.'.collection-schema', []);
+            $refs[$class] = [];
+            foreach ($schema['fields'] ?? [] as $field) {
+                if (isset($field['reference']) && is_string($field['reference'])) {
+                    [$collection] = explode('.', $field['reference'], 2);
+                    $refs[$class][] = $collection;
+                }
+            }
+        }
+
+        $sorted = [];
+        $visited = [];
+        $visit = static function (string $class) use (&$visit, &$sorted, &$visited, $refs, $byName): void {
+            if (isset($visited[$class])) {
+                return;
+            }
+            $visited[$class] = true;
+            foreach ($refs[$class] ?? [] as $collection) {
+                $target = $byName[$collection] ?? null;
+                if ($target !== null && $target !== $class) {
+                    $visit($target);
+                }
+            }
+            $sorted[] = $class;
+        };
+
+        foreach ($models as $class) {
+            $visit($class);
+        }
+
+        return $sorted;
     }
 
     private function owned(Run $run, string $name): void

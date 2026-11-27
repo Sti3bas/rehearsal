@@ -66,7 +66,7 @@ final class Mailpit implements Integration
 
     public function mailbox(Attempt $attempt, array $input): array
     {
-        abort_unless(in_array(self::class, config('rehearsal.integrations'), true), 404, 'Rehearsal Mailpit is not enabled.');
+        abort_unless(app(Integrations::class)->has(self::class), 404, 'Rehearsal Mailpit is not enabled.');
         $data = Validator::validate($input, [
             'recipient' => 'required|email|max:254',
             'id' => ['sometimes', 'string', 'max:80', 'regex:/\A[a-zA-Z0-9-]+\z/'],

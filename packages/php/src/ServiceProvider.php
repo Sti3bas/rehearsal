@@ -34,6 +34,7 @@ final class ServiceProvider extends LaravelProvider
         $this->app->singleton(Operations::class, fn () => new Operations(config('rehearsal.operations')));
         $this->app->singleton(Factories::class);
         $this->app->singleton(Schedules::class);
+        $this->app->singleton(Integrations::class);
         if (! $this->active()) {
             return;
         }
@@ -47,14 +48,15 @@ final class ServiceProvider extends LaravelProvider
                 config([$key => $value]);
             }
         }
-        if (in_array(Database::class, config('rehearsal.integrations'), true)) {
+        $integrations = $this->app->make(Integrations::class);
+        if ($integrations->has(Database::class)) {
             $this->app->singleton(Database::class);
             $this->app->make(Database::class)->isolateConnections();
         }
-        if (in_array(Filesystem::class, config('rehearsal.integrations'), true)) {
+        if ($integrations->has(Filesystem::class)) {
             Filesystem::configureDisks($this->app->make(Run::class));
         }
-        if (in_array(LaravelState::class, config('rehearsal.integrations'), true)) {
+        if ($integrations->has(LaravelState::class)) {
             LaravelState::configureRateLimiter($this->app);
         }
         $control = static fn (Request $request) => app()->bound(Run::class) && $request->isMethod('POST')
@@ -88,10 +90,11 @@ final class ServiceProvider extends LaravelProvider
             Route::get('/_rehearsal/route-mock', [RouteMocks::class, 'resolve']);
             Route::get('/_rehearsal/route-mock/gates/{gate}', [RouteMocks::class, 'gate'])->where('gate', '[a-f0-9]{32}');
         }
-        if (config('rehearsal.scout.engine') === 'typesense' && in_array(Scout::class, config('rehearsal.integrations'), true)) {
+        if (config('rehearsal.scout.engine') === 'typesense' && $this->app->make(Integrations::class)->has(Scout::class)) {
             Route::get('/_rehearsal/typesense', [Scout::class, 'credentials']);
         }
-        if (is_array(config('rehearsal.login'))) {
+        $login = config('rehearsal.login');
+        if ($login === true || is_array($login)) {
             Route::post('/_rehearsal/login', [Control::class, 'login'])
                 ->middleware([EncryptCookies::class, AddQueuedCookiesToResponse::class, StartSession::class]);
         }

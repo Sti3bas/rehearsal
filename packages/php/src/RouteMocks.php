@@ -42,7 +42,7 @@ final class RouteMocks
                 && ! preg_match('/[\r\n]/', $value), 422);
         }
         if ($fault) {
-            abort_unless(in_array($data['path'], config('rehearsal.fault_paths', []), true), 422);
+            abort_unless(self::faultPathAllowed($data['path']), 422);
             abort_if(! empty($response['abort']) || ! empty($response['networkError'])
                 || isset($response['gate']) || ! empty($response['passthrough']), 422);
         }
@@ -57,6 +57,22 @@ final class RouteMocks
             }
             $rules[] = $data;
         });
+    }
+
+    public static function faultPathAllowed(string $path): bool
+    {
+        if ($path === '/_rehearsal' || str_starts_with($path, '/_rehearsal/')) {
+            return false;
+        }
+        $configured = config('rehearsal.fault_paths', []);
+        if ($configured === false) {
+            return false;
+        }
+        if ($configured === true || (is_array($configured) && ($configured['discover'] ?? false) === true)) {
+            return true;
+        }
+
+        return is_array($configured) && in_array($path, $configured, true);
     }
 
     public static function clear(Attempt $attempt, bool $fault): void
