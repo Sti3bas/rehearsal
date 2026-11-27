@@ -34,7 +34,7 @@ The installer writes a disposable `.env.rehearsal` without overwriting an existi
 
 No changes to `bootstrap/app.php` are needed. The launcher sets `APP_ENV=rehearsal` on every managed process, so Laravel loads `.env.rehearsal` instead of `.env`. Laravel selects one dotenv file; it doesn't fill missing keys from `.env`. The managed launcher requires the dedicated file so it cannot silently fall back to the application's normal environment file.
 
-Pass per-run settings or CI secrets as process environment overrides, for example `laravelServer({ env: { APP_KEY: process.env.E2E_APP_KEY } })`. Defined values in `env` take precedence over `.env.rehearsal`; unset values are omitted. The launcher does not automatically forward arbitrary parent variables, and it owns `APP_ENV`, `APP_URL`, and its isolation settings.
+Pass per-run settings or CI secrets as process environment overrides, for example `laravelServer({ env: { APP_KEY: process.env.E2E_APP_KEY } })`. Defined values in `env` take precedence over `.env.rehearsal`; unset values are omitted. Playwright's serialized web-server config contains only a path to a private temporary file, never the override values. Rehearsal removes the file as soon as the launcher reads it. The launcher does not automatically forward arbitrary parent variables, and it owns `APP_ENV`, `APP_URL`, and its isolation settings.
 
 The PHP package allows `testing` and `rehearsal` by default. To use another environment and its matching dotenv file, run `php artisan rehearsal:install --environment=browser-tests` and set `laravelServer({ environment: "browser-tests" })`. For an existing `.env.playwright`, use `environment: "playwright"` and keep `playwright` in the allowlist via `rehearsal.environments` or `REHEARSAL_ENVIRONMENTS`.
 

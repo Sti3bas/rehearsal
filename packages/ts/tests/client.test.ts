@@ -1,3 +1,4 @@
+import { readFileSync, statSync } from "node:fs";
 import type { APIRequestContext } from "@playwright/test";
 import { describe, expect, it, vi } from "vitest";
 import { Laravel, startAttempt } from "../src/client.js";
@@ -43,10 +44,26 @@ describe("client", () => {
     expect(() => laravelServer({ environment: "../local" })).toThrow("Invalid Rehearsal environment name.");
   });
 
-  it("passes only explicitly mapped variables through the launcher", () => {
-    const server = laravelServer({ env: { APP_NAME: "Browser tests", STRIPE_KEY: undefined } });
-    expect(JSON.parse(server.env.REHEARSAL_MANAGED_ENV)).toEqual({ APP_NAME: "Browser tests" });
-    expect(server.env).not.toHaveProperty("APP_NAME");
+  it("stores explicit overrides privately instead of serializing their values into the webServer config", () => {
+    const server = laravelServer({
+      env: { APP_NAME: "Browser tests", STRIPE_KEY: undefined },
+      database: { DB_PASSWORD: "test-db-password" },
+      integrations: { REHEARSAL_INTEGRATION_SCOUT_KEY: "test-scout-key" },
+    });
+    const serialized = JSON.stringify({ webServer: server });
+    for (const value of ["Browser tests", "test-db-password", "test-scout-key"]) {
+      expect(serialized).not.toContain(value);
+    }
+    const file = server.env.REHEARSAL_MANAGED_ENV_FILE!;
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({
+      managed: {
+        REHEARSAL_MANAGED_DB_PASSWORD: "test-db-password",
+        REHEARSAL_MANAGED_REHEARSAL_INTEGRATION_SCOUT_KEY: "test-scout-key",
+      },
+      env: { APP_NAME: "Browser tests" },
+    });
+    expect(laravelServer({ env: { STRIPE_KEY: undefined } }).env).not.toHaveProperty("REHEARSAL_MANAGED_ENV_FILE");
   });
 
   it("uses Typesense metadata under a custom integration name", () => {
