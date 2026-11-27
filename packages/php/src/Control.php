@@ -450,21 +450,29 @@ final readonly class Control
             abort_unless(is_string($column) && preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $column) === 1, 422, 'Invalid update column.');
         }
 
-        $models = $query->get();
-        foreach ($models as $model) {
-            $model->forceFill($values)->save();
-        }
+        return $query->getConnection()->transaction(static function () use ($query, $values): int {
+            $count = 0;
+            foreach ($query->get() as $model) {
+                if ($model->forceFill($values)->save()) {
+                    $count++;
+                }
+            }
 
-        return $models->count();
+            return $count;
+        });
     }
 
     private function deleteQuery(\Illuminate\Database\Eloquent\Builder $query): int
     {
-        $models = $query->get();
-        foreach ($models as $model) {
-            $model->delete();
-        }
+        return $query->getConnection()->transaction(static function () use ($query): int {
+            $count = 0;
+            foreach ($query->get() as $model) {
+                if ($model->delete() === true) {
+                    $count++;
+                }
+            }
 
-        return $models->count();
+            return $count;
+        });
     }
 }
