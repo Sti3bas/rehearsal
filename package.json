@@ -1,6 +1,6 @@
 {
   "name": "@sti3bas/rehearsal",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Parallel Playwright testing for Laravel",
   "license": "MIT",
   "type": "module",
