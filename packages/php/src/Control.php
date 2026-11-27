@@ -357,6 +357,7 @@ final readonly class Control
     private function artisan(array $input): array
     {
         $data = Validator::validate($input, ['name' => 'required|string', 'args' => 'present|array']);
+        abort_if(array_key_exists('command', $data['args']), 422, 'Artisan arguments must not override the command name.');
         $configured = config('rehearsal.artisan', []);
         $name = $data['name'];
         $entry = is_array($configured) ? ($configured[$name] ?? null) : null;
