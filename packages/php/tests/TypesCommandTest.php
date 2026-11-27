@@ -33,7 +33,7 @@ it('emits the public allowlists and best-effort model and operation types', func
         $this->artisan('rehearsal:types', ['path' => $path, '--database' => 'rehearsal_types'])->assertSuccessful();
         expect(file_get_contents($path))
             ->toContain('declare module "@sti3bas/rehearsal"', '"Listing":', '"price"?: number | null;', '"secret"?: string | null;')
-            ->toContain('"model": { "id": number;', '"status"?: "active" | "sold";', '"states": "sold";', '"seller": "User";')
+            ->toContain('"model": { "id": number;', '"status"?: "active" | "sold";', '"states": { "sold": []; };', '"seller": "User";')
             ->toContain('"listing.mark": { input: { "id": number; "note"?: string | null; }; output: string | null }')
             ->toContain('"reindex": { "force"?: boolean; }', '"schedules": "expiry";', '"faultPaths": "/listings/**";')
             ->not->toContain('not exported');

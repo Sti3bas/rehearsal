@@ -16,3 +16,9 @@ test("passes exact strings to factory attributes", async ({ laravel }) => {
     { model: "User", attrs: { name: " Ada " } },
   ])).toMatchObject([{ name: "" }, { name: " Ada " }]);
 });
+
+test("chains discovered states and relations with the fluent factory builder", async ({ laravel }) => {
+  const category = await laravel.factory("Category").create({ name: "Chairs" });
+  const staff = await laravel.factory("User").for(category, "category").staff().create({ name: "Grace" });
+  expect(staff).toMatchObject({ name: "Grace", category_id: category.id });
+});

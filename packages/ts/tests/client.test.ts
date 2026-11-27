@@ -27,6 +27,62 @@ describe("client", () => {
     }));
   });
 
+  it("chains fluent factory calls in order, tags models invisibly, and batches count/createMany", async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ ok: () => true, json: async () => ({ data: [{ id: 7, name: "Seller" }] }) })
+      .mockResolvedValueOnce({ ok: () => true, json: async () => ({ data: [{ id: 11, title: "Oak" }] }) })
+      .mockResolvedValueOnce({ ok: () => true, json: async () => ({ data: [{ id: 12, title: "A" }, { id: 13, title: "B" }] }) })
+      .mockResolvedValueOnce({ ok: () => true, json: async () => ({ data: [{ id: 14, title: "Item 0" }, { id: 15, title: "Item 1" }] }) });
+    const request = { post } as unknown as APIRequestContext;
+    const client = new Laravel("http://127.0.0.1:8100", request, "cap", "attempt");
+
+    const builder = client.factory("User");
+    expect((builder as unknown as { then?: unknown }).then).toBeUndefined();
+
+    const seller = await builder.create({ name: "Seller" });
+    expect(seller).toEqual({ id: 7, name: "Seller" });
+    expect(Object.keys(seller)).toEqual(["id", "name"]);
+
+    const soldAt = new Date("2026-05-01T12:00:00.000Z");
+    const activeBase = client.factory("Listing").for(seller, "owner").active();
+    const listing = await activeBase.state({ price: 500 }).soldTo(seller, soldAt).create({ title: "Oak" });
+    expect(listing).toEqual({ id: 11, title: "Oak" });
+    expect(post).toHaveBeenNthCalledWith(2, "http://127.0.0.1:8100/_rehearsal/call", expect.objectContaining({
+      data: {
+        name: "factory",
+        data: {
+          items: [{
+            model: "Listing",
+            calls: [
+              { for: { $rehearsalModel: "User", id: 7 }, relation: "owner" },
+              { state: "active", args: [] },
+              { attrs: { price: 500 } },
+              { state: "soldTo", args: [{ $rehearsalModel: "User", id: 7 }, "2026-05-01T12:00:00.000Z"] },
+            ],
+            attrs: { title: "Oak" },
+          }],
+        },
+      },
+    }));
+
+    const pair = await activeBase.createMany([{ title: "A" }, { title: "B" }]);
+    expect(pair).toEqual([{ id: 12, title: "A" }, { id: 13, title: "B" }]);
+    expect(post).toHaveBeenNthCalledWith(3, "http://127.0.0.1:8100/_rehearsal/call", expect.objectContaining({
+      data: {
+        name: "factory",
+        data: {
+          items: [
+            { model: "Listing", calls: [{ for: { $rehearsalModel: "User", id: 7 }, relation: "owner" }, { state: "active", args: [] }], attrs: { title: "A" } },
+            { model: "Listing", calls: [{ for: { $rehearsalModel: "User", id: 7 }, relation: "owner" }, { state: "active", args: [] }], attrs: { title: "B" } },
+          ],
+        },
+      },
+    }));
+
+    const counted = await client.factory("Listing").count(2).create((_, i) => ({ title: `Item ${i}` }));
+    expect(counted).toEqual([{ id: 14, title: "Item 0" }, { id: 15, title: "Item 1" }]);
+  });
+
   it("rejects remote URLs despite similar-looking hostnames", () => {
     expect(loopback(new URL("http://127.0.0.1:8100"))).toBe(true);
     expect(loopback(new URL("http://localhost.evil.example:8100"))).toBe(false);

@@ -4,18 +4,26 @@ declare(strict_types=1);
 
 namespace Sti3bas\Rehearsal;
 
+use BackedEnum;
+use Carbon\CarbonImmutable;
 use Closure;
+use DateTimeImmutable;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use ReflectionClass;
+use ReflectionEnum;
 use ReflectionProperty;
+use Throwable;
 
 final readonly class Control
 {
@@ -85,11 +93,11 @@ final readonly class Control
         $factories = $this->factories->all($this->protocol->run);
         $data = Validator::validate($input, [
             'items' => 'required|array|list|min:1|max:100',
-            'items.*' => 'required|array:model,attrs,states,count,refs',
+            'items.*' => 'required|array:model,attrs,states,calls,count,refs',
             'items.*.model' => ['required', 'string', Rule::in(array_keys($factories))],
             'items.*.attrs' => 'sometimes|array|max:100',
-            'items.*.states' => 'sometimes|array|list|max:10',
-            'items.*.states.*' => 'required|string',
+            'items.*.states' => 'sometimes|array|list|max:20',
+            'items.*.calls' => 'sometimes|array|list|max:50',
             'items.*.count' => 'sometimes|integer|min:1|max:100',
             'items.*.refs' => 'sometimes|array|max:10',
             'items.*.refs.*' => 'required|integer|min:0',
@@ -111,11 +119,34 @@ final readonly class Control
                     abort_unless(is_callable([$model, 'factory']), 422);
                     $factory = $model::factory();
                 }
-                $create = function () use ($factory, $model, $item, $definition, $results, $data) {
+                $states = $this->factories->states(['factory' => $factory::class, ...$definition]);
+                $create = function () use ($factory, $model, $item, $definition, $states, $factories, $results, $data) {
                     foreach ($item['states'] ?? [] as $state) {
-                        $method = $definition['states'][$state] ?? null;
-                        abort_unless(is_string($method), 422, 'Factory state is not registered.');
-                        $factory = $factory->{$method}();
+                        if (is_string($state)) {
+                            $factory = $this->applyState($factory, $states, $state, [], $factories);
+                        } elseif (is_array($state) && isset($state['name']) && is_string($state['name'])) {
+                            $args = $state['args'] ?? [];
+                            abort_unless(is_array($args) && array_is_list($args), 422, 'Invalid factory state arguments.');
+                            $factory = $this->applyState($factory, $states, $state['name'], $args, $factories);
+                        } else {
+                            abort(422, 'Invalid factory state.');
+                        }
+                    }
+                    foreach ($item['calls'] ?? [] as $call) {
+                        abort_unless(is_array($call), 422, 'Invalid factory call.');
+                        if (isset($call['state']) && is_string($call['state'])) {
+                            $args = $call['args'] ?? [];
+                            abort_unless(is_array($args) && array_is_list($args), 422, 'Invalid factory state arguments.');
+                            $factory = $this->applyState($factory, $states, $call['state'], $args, $factories);
+                        } elseif (isset($call['attrs']) && is_array($call['attrs'])) {
+                            $factory = $factory->state($call['attrs']);
+                        } elseif (isset($call['for']) && is_array($call['for'])) {
+                            $relation = isset($call['relation']) && is_string($call['relation']) ? $call['relation'] : null;
+                            $related = $this->resolveForTarget($call['for'], $model, $relation, $factories, $results);
+                            $factory = $factory->for($related, $relation);
+                        } else {
+                            abort(422, 'Invalid factory call.');
+                        }
                     }
                     if (isset($item['count'])) {
                         $factory = $factory->count((int) $item['count']);
@@ -141,6 +172,157 @@ final readonly class Control
 
             return $results;
         });
+    }
+
+    private function applyState(Factory $factory, array $states, string $name, array $rawArgs, array $factories): Factory
+    {
+        $state = $states[$name] ?? null;
+        abort_unless($state !== null, 422, 'Factory state is not registered.');
+
+        $params = $state['params'];
+        abort_if(count($rawArgs) > count($params), 422, 'Too many arguments for factory state.');
+
+        $hydrated = [];
+        foreach ($params as $index => $param) {
+            if (! array_key_exists($index, $rawArgs)) {
+                abort_unless($param['optional'], 422, 'Missing required argument for factory state.');
+
+                continue;
+            }
+            $hydrated[] = $this->hydrateArgument($rawArgs[$index], $param, $factories);
+        }
+
+        return $factory->{$state['method']}(...$hydrated);
+    }
+
+    private function hydrateArgument(mixed $raw, array $param, array $factories): mixed
+    {
+        if ($raw === null) {
+            abort_unless($param['nullable'], 422, 'Factory state argument cannot be null.');
+
+            return null;
+        }
+
+        $types = $param['types'];
+        if (is_array($raw) && isset($raw['$rehearsalModel']) && is_string($raw['$rehearsalModel'])) {
+            $modelClass = $factories[$raw['$rehearsalModel']]['model'] ?? null;
+            $id = $raw['id'] ?? null;
+            abort_unless($modelClass !== null && (is_int($id) || is_string($id)), 422, 'Invalid model reference.');
+            foreach ($types as $type) {
+                if (($type['kind'] === 'model' && is_a($modelClass, $type['class'], true)) || $type['kind'] === 'mixed') {
+                    return $modelClass::query()->findOrFail($id);
+                }
+            }
+            abort(422, 'Model reference does not match factory state parameter.');
+        }
+
+        $modelTypes = array_values(array_filter($types, static fn (array $type) => $type['kind'] === 'model'));
+        $kinds = array_column($types, 'kind');
+        $allowsScalarMatch = (is_string($raw) && (in_array('string', $kinds, true) || in_array('mixed', $kinds, true)))
+            || (is_int($raw) && (in_array('int', $kinds, true) || in_array('float', $kinds, true) || in_array('mixed', $kinds, true)));
+        if ($modelTypes !== [] && ! $allowsScalarMatch && ((is_array($raw) && isset($raw['id']) && (is_int($raw['id']) || is_string($raw['id']))) || is_int($raw) || is_string($raw))) {
+            $id = is_array($raw) ? $raw['id'] : $raw;
+            $concrete = array_values(array_filter($modelTypes, static fn (array $type) => ! (new ReflectionClass($type['class']))->isAbstract()));
+            if (count($concrete) === 1) {
+                return $concrete[0]['class']::query()->findOrFail($id);
+            }
+            if (is_array($raw)) {
+                abort(422, 'Ambiguous model reference; pass a model created by Rehearsal.');
+            }
+        }
+
+        foreach ($types as $type) {
+            $kind = $type['kind'];
+            if ($kind === 'mixed') {
+                return $raw;
+            }
+            if ($kind === 'string' && is_string($raw)) {
+                return $raw;
+            }
+            if ($kind === 'int' && is_int($raw)) {
+                return $raw;
+            }
+            if ($kind === 'float' && (is_float($raw) || is_int($raw))) {
+                return (float) $raw;
+            }
+            if ($kind === 'bool' && is_bool($raw)) {
+                return $raw;
+            }
+            if ($kind === 'true' && $raw === true) {
+                return true;
+            }
+            if ($kind === 'false' && $raw === false) {
+                return false;
+            }
+            if ($kind === 'array' && is_array($raw)) {
+                return $raw;
+            }
+            if ($kind === 'enum' && (is_string($raw) || is_int($raw))) {
+                /** @var class-string<BackedEnum> $enumClass */
+                $enumClass = $type['class'];
+                $backing = (new ReflectionEnum($enumClass))->getBackingType()?->getName();
+                if (($backing === 'int' && is_int($raw)) || ($backing === 'string' && is_string($raw))) {
+                    $case = $enumClass::tryFrom($raw);
+                    if ($case !== null) {
+                        return $case;
+                    }
+                }
+            }
+            if ($kind === 'date' && is_string($raw)) {
+                try {
+                    return is_a($type['class'], DateTimeImmutable::class, true)
+                        ? CarbonImmutable::parse($raw)
+                        : Carbon::parse($raw);
+                } catch (Throwable) {
+                    abort(422, 'Invalid date argument for factory state.');
+                }
+            }
+        }
+
+        abort(422, 'Invalid factory state argument.');
+    }
+
+    private function resolveForTarget(array $for, string $model, ?string $relation, array $factories, array $results): Model
+    {
+        if (isset($for['ref']) && is_int($for['ref'])) {
+            $related = $results[$for['ref']] ?? null;
+            abort_unless($related instanceof Model, 422, 'Invalid factory relation reference.');
+            $this->assertForRelationMatches($model, $relation, $related);
+
+            return $related;
+        }
+        $alias = $for['$rehearsalModel'] ?? $for['model'] ?? null;
+        $id = $for['id'] ?? null;
+        abort_unless(is_int($id) || is_string($id), 422, 'Invalid factory for() target.');
+
+        if (is_string($alias)) {
+            $targetClass = $factories[$alias]['model'] ?? null;
+            abort_unless(is_string($targetClass) && is_subclass_of($targetClass, Model::class), 422, 'Unknown model alias for factory for().');
+            $resolved = $targetClass::query()->findOrFail($id);
+            $this->assertForRelationMatches($model, $relation, $resolved);
+
+            return $resolved;
+        }
+
+        if ($relation !== null && method_exists($model, $relation)) {
+            $rel = (new $model)->{$relation}();
+            if ($rel instanceof BelongsTo && ! $rel instanceof MorphTo) {
+                return $rel->getRelated()->newQuery()->findOrFail($id);
+            }
+        }
+
+        abort(422, 'Cannot resolve model for factory for(); pass a model created by Rehearsal.');
+    }
+
+    private function assertForRelationMatches(string $model, ?string $relation, Model $resolved): void
+    {
+        if ($relation === null || ! method_exists($model, $relation)) {
+            return;
+        }
+        $rel = (new $model)->{$relation}();
+        if ($rel instanceof BelongsTo && ! $rel instanceof MorphTo) {
+            abort_unless(is_a($resolved, $rel->getRelated()::class), 422, 'Model does not match factory for() relation.');
+        }
     }
 
     private function withFactoryModel(Factory $factory, string $model, Closure $create): mixed
