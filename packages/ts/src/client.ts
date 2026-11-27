@@ -181,7 +181,7 @@ export class Laravel {
     if (Array.isArray(model)) {
       return this.sendFactories(model);
     }
-    if (attrs === undefined && options === undefined) {
+    if (arguments.length === 1) {
       return createFactoryBuilder((items) => this.sendFactories(items), model as string);
     }
     return this.sendFactories([{ model: model as string, attrs: attrs ?? {}, ...options }]).then((results) => results[0]);
