@@ -57,13 +57,14 @@ it('uses only explicit aliases when discovery is disabled', function () {
     expect(app(Factories::class)->all())->toBe(['Kept' => $explicit]);
 });
 
-it('uses the configured model hook ahead of a standalone mapping outside the model scan paths', function () {
+it('chooses the correct factory for an alias outside the model scan paths', function (bool $discover, bool $explicit) {
     config([
         'database.default' => 'factory_test',
         'database.connections.factory_test' => ['driver' => 'sqlite', 'database' => ':memory:'],
         'rehearsal.capability' => bin2hex(random_bytes(32)),
+        'rehearsal.factories.discover' => $discover,
         'rehearsal.factories.model_paths' => [],
-        'rehearsal.factories.Configured' => ['model' => CustomFactoryModel::class],
+        'rehearsal.factories.Configured' => ['model' => CustomFactoryModel::class] + ($explicit ? ['factory' => CustomDiscoveryFactory::class] : []),
     ]);
     Schema::create('custom_factory_models', function (Blueprint $table) {
         $table->id();
@@ -78,9 +79,13 @@ it('uses the configured model hook ahead of a standalone mapping outside the mod
 
     $response = app(Control::class)->call($request, new Attempt($run, 1, 'test'));
 
-    expect($response->getData(true)['data'][0]['source'])->toBe('model hook')
-        ->and(CustomFactoryModel::$hookCalls)->toBe(1);
-});
+    expect($response->getData(true)['data'][0]['source'])->toBe($explicit ? 'standalone' : 'model hook')
+        ->and(CustomFactoryModel::$hookCalls)->toBe($explicit ? 0 : 1);
+})->with([
+    'model hook beats discovered standalone' => [true, false],
+    'explicit factory wins with discovery' => [true, true],
+    'explicit factory wins without discovery' => [false, true],
+]);
 
 it('reuses the managed run snapshot across application boots', function () {
     $run = new Run(bin2hex(random_bytes(12)));

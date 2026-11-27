@@ -50,7 +50,9 @@ final class Factories
             }
         }
         foreach ($candidates as $model => $factories) {
-            if (count($factories) === 1) {
+            if ($this->usesModelFactory($model)) {
+                $models[$model] = ['model' => $model];
+            } elseif (count($factories) === 1) {
                 $models[$model] = ['model' => $model, 'factory' => array_key_first($factories)];
             }
         }
@@ -90,7 +92,7 @@ final class Factories
         return $entries;
     }
 
-    public function usesModelFactory(string $model): bool
+    private function usesModelFactory(string $model): bool
     {
         $reflection = new ReflectionClass($model);
         if (! $reflection->hasMethod('factory')) {
