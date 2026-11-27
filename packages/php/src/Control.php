@@ -412,6 +412,9 @@ final readonly class Control
         foreach ($data['where'] ?? [] as $clause) {
             $column = $clause['column'];
             $operator = $clause['operator'];
+            if (! in_array($operator, ['null', 'not_null'], true)) {
+                abort_unless(array_key_exists('value', $clause), 422, "Filter value is required for [{$column}].");
+            }
             $value = $clause['value'] ?? null;
             match ($operator) {
                 'null' => $query->whereNull($column),
@@ -434,10 +437,10 @@ final readonly class Control
             'get' => $query->get()->map(static fn (Model $row) => $row->toArray())->all(),
             'pluck' => $query->pluck($data['column'] ?? abort(422, 'Column is required for pluck.'))->values()->all(),
             'value' => $query->value($data['column'] ?? abort(422, 'Column is required for value.')),
-            'count' => $query->count(),
+            'count' => isset($data['limit']) ? min($query->count(), (int) $data['limit']) : $query->count(),
             'exists' => $query->exists(),
             'update' => $this->updateQuery($query, $data['values'] ?? abort(422, 'Values are required for update.')),
-            'delete' => $query->delete(),
+            'delete' => $this->deleteQuery($query),
         };
     }
 
@@ -447,6 +450,21 @@ final readonly class Control
             abort_unless(is_string($column) && preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $column) === 1, 422, 'Invalid update column.');
         }
 
-        return $query->toBase()->update($values);
+        $models = $query->get();
+        foreach ($models as $model) {
+            $model->forceFill($values)->save();
+        }
+
+        return $models->count();
+    }
+
+    private function deleteQuery(\Illuminate\Database\Eloquent\Builder $query): int
+    {
+        $models = $query->get();
+        foreach ($models as $model) {
+            $model->delete();
+        }
+
+        return $models->count();
     }
 }

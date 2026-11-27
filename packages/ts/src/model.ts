@@ -37,16 +37,29 @@ function makeQuery<K extends FactoryName>(send: SendQuery, state: QueryState): M
   return {
     where(columnOrAttrs: string | Record<string, unknown>, operatorOrValue?: unknown, maybeValue?: unknown) {
       if (typeof columnOrAttrs === "object" && columnOrAttrs !== null) {
-        const clauses: WhereClause[] = Object.entries(columnOrAttrs).map(([column, value]) =>
-          value === null ? { column, operator: "null" } : { column, operator: "=", value },
-        );
+        const clauses: WhereClause[] = Object.entries(columnOrAttrs).map(([column, value]) => {
+          if (value === undefined) {
+            throw new TypeError(`Model query where(${column}) received undefined; pass null or use whereNull().`);
+          }
+          return value === null ? { column, operator: "null" } : { column, operator: "=", value };
+        });
         return makeQuery<K>(send, { ...state, where: [...state.where, ...clauses] });
       }
-      const clause: WhereClause = arguments.length >= 3
-        ? { column: columnOrAttrs, operator: operatorOrValue as ModelWhereOperator, value: maybeValue }
-        : operatorOrValue === null
-          ? { column: columnOrAttrs, operator: "null" }
-          : { column: columnOrAttrs, operator: "=", value: operatorOrValue };
+      if (arguments.length >= 3) {
+        if (maybeValue === undefined) {
+          throw new TypeError(`Model query where(${columnOrAttrs}) received undefined; pass null or use whereNull().`);
+        }
+        return makeQuery<K>(send, {
+          ...state,
+          where: [...state.where, { column: columnOrAttrs, operator: operatorOrValue as ModelWhereOperator, value: maybeValue }],
+        });
+      }
+      if (operatorOrValue === undefined) {
+        throw new TypeError(`Model query where(${columnOrAttrs}) received undefined; pass null or use whereNull().`);
+      }
+      const clause: WhereClause = operatorOrValue === null
+        ? { column: columnOrAttrs, operator: "null" }
+        : { column: columnOrAttrs, operator: "=", value: operatorOrValue };
       return makeQuery<K>(send, { ...state, where: [...state.where, clause] });
     },
     whereIn(column: string, values: readonly unknown[]) {
