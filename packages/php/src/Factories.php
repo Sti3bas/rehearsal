@@ -90,12 +90,22 @@ final class Factories
         return $entries;
     }
 
-    private function usesModelFactory(string $model): bool
+    public function usesModelFactory(string $model): bool
     {
         $reflection = new ReflectionClass($model);
+        if (! $reflection->hasMethod('factory')) {
+            return false;
+        }
+        $method = $reflection->getMethod('factory');
+        if (! $method->isPublic() || ! $method->isStatic()) {
+            return false;
+        }
+        if (! $this->isTraitMethod($method)) {
+            return true;
+        }
+
         $hook = $reflection->getMethod('newFactory');
-        $default = new ReflectionMethod(HasFactory::class, 'newFactory');
-        if ($hook->getFileName() !== $default->getFileName() || $hook->getStartLine() !== $default->getStartLine()) {
+        if (! $this->isTraitMethod($hook)) {
             return true;
         }
 
@@ -106,6 +116,13 @@ final class Factories
             ?? Factory::resolveFactoryName($model);
 
         return is_string($factory) && is_subclass_of($factory, Factory::class) && (new ReflectionClass($factory))->isInstantiable();
+    }
+
+    private function isTraitMethod(ReflectionMethod $method): bool
+    {
+        $default = new ReflectionMethod(HasFactory::class, $method->getName());
+
+        return $method->getFileName() === $default->getFileName() && $method->getStartLine() === $default->getStartLine();
     }
 
     private function standaloneModel(string $factory): ?string

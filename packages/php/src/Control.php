@@ -100,7 +100,7 @@ final readonly class Control
                 $definition = $factories[$item['model']];
                 $model = $definition['model'] ?? '';
                 abort_unless(is_subclass_of($model, Model::class), 422);
-                if (isset($definition['factory'])) {
+                if (isset($definition['factory']) && ! $this->factories->usesModelFactory($model)) {
                     $class = $definition['factory'];
                     abort_unless(is_subclass_of($class, Factory::class), 422);
                     $factory = $class::new();

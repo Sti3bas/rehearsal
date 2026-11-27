@@ -4,7 +4,12 @@ use Illuminate\Database\Eloquent\Factories\Attributes\UseModel;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase;
+use Sti3bas\Rehearsal\Attempt;
+use Sti3bas\Rehearsal\Control;
 use Sti3bas\Rehearsal\Factories;
 use Sti3bas\Rehearsal\Protocol;
 use Sti3bas\Rehearsal\Run;
@@ -52,6 +57,31 @@ it('uses only explicit aliases when discovery is disabled', function () {
     expect(app(Factories::class)->all())->toBe(['Kept' => $explicit]);
 });
 
+it('uses the configured model hook ahead of a standalone mapping outside the model scan paths', function () {
+    config([
+        'database.default' => 'factory_test',
+        'database.connections.factory_test' => ['driver' => 'sqlite', 'database' => ':memory:'],
+        'rehearsal.capability' => bin2hex(random_bytes(32)),
+        'rehearsal.factories.model_paths' => [],
+        'rehearsal.factories.Configured' => ['model' => CustomFactoryModel::class],
+    ]);
+    Schema::create('custom_factory_models', function (Blueprint $table) {
+        $table->id();
+        $table->string('source');
+    });
+    $run = new Run(bin2hex(random_bytes(12)));
+    $this->app->instance(Run::class, $run);
+    $request = Request::create('/_rehearsal/call', 'POST', [
+        'name' => 'factory',
+        'data' => ['items' => [['model' => 'Configured']]],
+    ], server: ['HTTP_X_REHEARSAL_CAPABILITY' => config('rehearsal.capability')]);
+
+    $response = app(Control::class)->call($request, new Attempt($run, 1, 'test'));
+
+    expect($response->getData(true)['data'][0]['source'])->toBe('model hook')
+        ->and(CustomFactoryModel::$hookCalls)->toBe(1);
+});
+
 it('reuses the managed run snapshot across application boots', function () {
     $run = new Run(bin2hex(random_bytes(12)));
     $this->app->instance(Run::class, $run);
@@ -87,13 +117,15 @@ final class CustomFactoryModel extends Model
 {
     use HasFactory;
 
+    public $timestamps = false;
+
     public static int $hookCalls = 0;
 
     protected static function newFactory(): CustomDiscoveryFactory
     {
         self::$hookCalls++;
 
-        return CustomDiscoveryFactory::new();
+        return CustomDiscoveryFactory::new()->state(['source' => 'model hook']);
     }
 }
 
@@ -103,7 +135,7 @@ final class CustomDiscoveryFactory extends Factory
 
     public function definition(): array
     {
-        throw new LogicException('Discovery must not evaluate a factory definition.');
+        return ['source' => 'standalone'];
     }
 }
 
