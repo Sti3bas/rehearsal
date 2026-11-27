@@ -113,7 +113,7 @@ it('chooses the correct factory for an alias outside the model scan paths', func
     'explicit factory wins without discovery' => [false, true],
 ]);
 
-it('binds an explicit factory to the configured model without changing its resolver', function () {
+it('uses native factory model and create behavior and restores the previous resolver', function (string $state, bool $fails) {
     config([
         'database.default' => 'factory_test',
         'database.connections.factory_test' => ['driver' => 'sqlite', 'database' => ':memory:'],
@@ -122,31 +122,47 @@ it('binds an explicit factory to the configured model without changing its resol
         'rehearsal.factories.Configured' => [
             'model' => ExplicitBindingModel::class,
             'factory' => UnboundDiscoveryFactory::class,
-            'states' => ['named' => 'named'],
+            'states' => ['named' => 'named', 'switched' => 'switched'],
         ],
     ]);
-    Schema::create('explicit_binding_models', function (Blueprint $table) {
-        $table->id();
-        $table->string('source');
-    });
+    foreach (['explicit_binding_models', 'custom_factory_models'] as $table) {
+        Schema::create($table, function (Blueprint $table) {
+            $table->id();
+            $table->string('source');
+        });
+    }
     $run = new Run(bin2hex(random_bytes(12)));
     $this->app->instance(Run::class, $run);
+    $attributes = ['source' => $fails ? 'throw' : 'override'];
     $request = Request::create('/_rehearsal/call', 'POST', [
         'name' => 'factory',
-        'data' => ['items' => [['model' => 'Configured', 'count' => 2, 'states' => ['named'], 'attrs' => ['source' => 'override']]]],
+        'data' => ['items' => [['model' => 'Configured', 'count' => 2, 'states' => [$state], 'attrs' => $attributes]]],
     ], server: ['HTTP_X_REHEARSAL_CAPABILITY' => config('rehearsal.capability')]);
 
+    UnboundDiscoveryFactory::$createCalls = [];
     UnboundDiscoveryFactory::guessModelNamesUsing(fn () => FactorylessModel::class);
     try {
-        $response = app(Control::class)->call($request, new Attempt($run, 1, 'test'));
+        $create = fn () => app(Control::class)->call($request, new Attempt($run, 1, 'test'));
+        if ($fails) {
+            expect($create)->toThrow(LogicException::class, 'Factory create failed.');
+        } else {
+            expect(array_column($create()->getData(true)['data'][0], 'source'))->toBe(['override', 'override']);
+        }
 
-        expect(array_column($response->getData(true)['data'][0], 'source'))->toBe(['override', 'override'])
-            ->and(ExplicitBindingModel::query()->count())->toBe(2)
+        expect(ExplicitBindingModel::query()->count())->toBe(! $fails && $state === 'named' ? 2 : 0)
+            ->and(CustomFactoryModel::query()->count())->toBe($state === 'switched' ? 2 : 0)
             ->and(UnboundDiscoveryFactory::new()->modelName())->toBe(FactorylessModel::class);
+        if ($state === 'named') {
+            expect(UnboundDiscoveryFactory::$createCalls[0] ?? null)->toBe($attributes);
+        }
     } finally {
         Factory::flushState();
     }
-});
+})->with([
+    'passes attributes unchanged to a create override' => ['named', false],
+    'preserves the model declared by the factory returned from a state' => ['switched', false],
+    'restores the resolver when create throws' => ['named', true],
+]);
 
 it('reuses the managed run snapshot across application boots', function () {
     $run = new Run(bin2hex(random_bytes(12)));
@@ -254,6 +270,8 @@ final class ExplicitBindingModel extends Model
 
 final class UnboundDiscoveryFactory extends Factory
 {
+    public static array $createCalls = [];
+
     public function definition(): array
     {
         return ['source' => 'factory'];
@@ -266,5 +284,20 @@ final class UnboundDiscoveryFactory extends Factory
         }
 
         return $this->state(['source' => 'named']);
+    }
+
+    public function switched(): CustomDiscoveryFactory
+    {
+        return CustomDiscoveryFactory::new();
+    }
+
+    public function create($attributes = [], ?Model $parent = null)
+    {
+        self::$createCalls[] = $attributes;
+        if (($attributes['source'] ?? null) === 'throw') {
+            throw new LogicException('Factory create failed.');
+        }
+
+        return parent::create($attributes, $parent);
     }
 }

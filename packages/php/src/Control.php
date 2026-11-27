@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Sti3bas\Rehearsal;
 
-use Illuminate\Database\Eloquent\Factories\Attributes\UseModel;
+use Closure;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,7 +15,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
-use ReflectionClass;
 use ReflectionProperty;
 
 final readonly class Control
@@ -104,54 +103,64 @@ final readonly class Control
                 $definition = $factories[$item['model']];
                 $model = $definition['model'] ?? '';
                 abort_unless(is_subclass_of($model, Model::class), 422);
-                $binding = null;
                 if (isset($definition['factory'])) {
                     $class = $definition['factory'];
                     abort_unless(is_subclass_of($class, Factory::class), 422);
                     $factory = $class::new();
-                    if (isset($configured[$item['model']]['factory'])
-                        && (new ReflectionClass($factory))->getAttributes(UseModel::class) === []) {
-                        $property = new ReflectionProperty(Factory::class, 'model');
-                        if ($property->getValue($factory) === null) {
-                            $binding = $property;
-                            $binding->setValue($factory, $model);
-                        }
-                    }
                 } else {
                     abort_unless(is_callable([$model, 'factory']), 422);
                     $factory = $model::factory();
                 }
-                foreach ($item['states'] ?? [] as $state) {
-                    $method = $definition['states'][$state] ?? null;
-                    abort_unless(is_string($method), 422, 'Factory state is not registered.');
-                    $factory = $factory->{$method}();
-                    $binding?->setValue($factory, $model);
-                }
-                if (isset($item['count'])) {
-                    $factory = $factory->count((int) $item['count']);
-                    $binding?->setValue($factory, $model);
-                }
-                $attributes = $item['attrs'] ?? [];
-                foreach ($item['refs'] ?? [] as $name => $index) {
-                    $target = $definition['relations'][$name] ?? null;
-                    $related = $results[$index] ?? null;
-                    abort_unless($target !== null && $related instanceof Model
-                        && $data['items'][$index]['model'] === $target, 422, 'Invalid factory relation reference.');
-                    $relation = (new $model)->{$name}();
-                    abort_unless($relation instanceof BelongsTo && is_a($related, $relation->getRelated()::class),
-                        422, 'Factory relation must be a configured belongs-to relation.');
-                    $attributes[$relation->getForeignKeyName()] = $related->getAttribute($relation->getOwnerKeyName());
-                }
-                if ($binding !== null && $attributes !== []) {
-                    $factory = $factory->state($attributes);
-                    $binding->setValue($factory, $model);
-                    $attributes = [];
-                }
-                $results[] = $factory->create($attributes);
+                $create = function () use ($factory, $model, $item, $definition, $results, $data) {
+                    foreach ($item['states'] ?? [] as $state) {
+                        $method = $definition['states'][$state] ?? null;
+                        abort_unless(is_string($method), 422, 'Factory state is not registered.');
+                        $factory = $factory->{$method}();
+                    }
+                    if (isset($item['count'])) {
+                        $factory = $factory->count((int) $item['count']);
+                    }
+                    $attributes = $item['attrs'] ?? [];
+                    foreach ($item['refs'] ?? [] as $name => $index) {
+                        $target = $definition['relations'][$name] ?? null;
+                        $related = $results[$index] ?? null;
+                        abort_unless($target !== null && $related instanceof Model
+                            && $data['items'][$index]['model'] === $target, 422, 'Invalid factory relation reference.');
+                        $relation = (new $model)->{$name}();
+                        abort_unless($relation instanceof BelongsTo && is_a($related, $relation->getRelated()::class),
+                            422, 'Factory relation must be a configured belongs-to relation.');
+                        $attributes[$relation->getForeignKeyName()] = $related->getAttribute($relation->getOwnerKeyName());
+                    }
+
+                    return $factory->create($attributes);
+                };
+                $results[] = isset($configured[$item['model']]['factory'])
+                    ? $this->withFactoryModel($factory, $model, $create)
+                    : $create();
             }
 
             return $results;
         });
+    }
+
+    private function withFactoryModel(Factory $factory, string $model, Closure $create): mixed
+    {
+        $class = $factory::class;
+        $property = new ReflectionProperty($class, 'modelNameResolvers');
+        $previous = $property->getValue()[$class] ?? null;
+        try {
+            $factory->guessModelNamesUsing(static fn () => $model);
+
+            return $create();
+        } finally {
+            $resolvers = $property->getValue();
+            if ($previous === null) {
+                unset($resolvers[$class]);
+            } else {
+                $resolvers[$class] = $previous;
+            }
+            $property->setValue(null, $resolvers);
+        }
     }
 
     private function travel(Attempt $attempt, array $input): string
