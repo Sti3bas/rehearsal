@@ -18,7 +18,7 @@ final class TypesCommand extends Command
 
     protected $description = 'Generate TypeScript declarations for this application’s Rehearsal configuration';
 
-    public function handle(Operations $operations, Factories $registry): int
+    public function handle(Operations $operations, Factories $registry, Schedules $schedules): int
     {
         $path = $this->argument('path');
         if (! str_ends_with($path, '.d.ts')) {
@@ -56,7 +56,7 @@ final class TypesCommand extends Command
             'factories' => $this->shape($factories),
             'operations' => $this->shape($calls),
             'artisan' => $this->shape($artisan),
-            'schedules' => $this->literals(array_keys(config('rehearsal.schedule'))),
+            'schedules' => $this->literals(array_keys($schedules->all())),
             'faultPaths' => $this->literals(config('rehearsal.fault_paths')),
         ]);
         $helperImport = '';

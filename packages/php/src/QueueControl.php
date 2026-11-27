@@ -80,7 +80,7 @@ final class QueueControl
 
     public static function schedule(array $input): array
     {
-        $entries = config('rehearsal.schedule', []);
+        $entries = app(Schedules::class)->all();
         $data = Validator::validate($input, [
             'names' => 'required|array|list|min:1|max:10',
             'names.*' => ['required', 'string', Rule::in(array_keys($entries))],
@@ -92,7 +92,9 @@ final class QueueControl
         $results = [];
         foreach ($data['names'] as $name) {
             $entry = $entries[$name];
-            $code = Artisan::call($entry['command'], $entry['fixed'] ?? []);
+            $code = isset($entry['raw'])
+                ? Artisan::call($entry['raw'])
+                : Artisan::call($entry['command'], $entry['fixed'] ?? []);
             $results[] = ['name' => $name, 'code' => $code];
             if ($code !== 0) {
                 return ['results' => $results, 'drain' => null];

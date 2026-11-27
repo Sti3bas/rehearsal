@@ -33,6 +33,7 @@ final class ServiceProvider extends LaravelProvider
 
         $this->app->singleton(Operations::class, fn () => new Operations(config('rehearsal.operations')));
         $this->app->singleton(Factories::class);
+        $this->app->singleton(Schedules::class);
         if (! $this->active()) {
             return;
         }
