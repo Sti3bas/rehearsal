@@ -55,6 +55,7 @@ final readonly class Control
         $data = $input['data'];
         $result = match ($input['name']) {
             'factory' => $this->factory($data),
+            'model.query' => $this->modelQuery($data),
             'travel' => $this->travel($attempt, $data),
             'artisan' => $this->artisan($data),
             'queue.drain' => QueueControl::drain($data),
@@ -384,5 +385,68 @@ final readonly class Control
         $exit = Artisan::call($name, $data['args']);
 
         return ['code' => $exit];
+    }
+
+    private function modelQuery(array $input): mixed
+    {
+        $factories = $this->factories->all($this->protocol->run);
+        $data = Validator::validate($input, [
+            'model' => ['required', 'string', Rule::in(array_keys($factories))],
+            'action' => ['required', 'string', Rule::in(['first', 'firstOrFail', 'get', 'pluck', 'value', 'count', 'exists', 'update', 'delete'])],
+            'where' => 'sometimes|array|list|max:50',
+            'where.*.column' => ['required', 'string', 'regex:/^[A-Za-z_][A-Za-z0-9_]*$/'],
+            'where.*.operator' => ['required', 'string', Rule::in(['=', '!=', '<', '<=', '>', '>=', 'like', 'in', 'not_in', 'null', 'not_null'])],
+            'where.*.value' => 'nullable',
+            'orderBy' => 'sometimes|array|list|max:10',
+            'orderBy.*.column' => ['required', 'string', 'regex:/^[A-Za-z_][A-Za-z0-9_]*$/'],
+            'orderBy.*.direction' => ['required', 'string', Rule::in(['asc', 'desc'])],
+            'limit' => 'sometimes|integer|min:1|max:1000',
+            'column' => ['sometimes', 'string', 'regex:/^[A-Za-z_][A-Za-z0-9_]*$/'],
+            'values' => 'sometimes|array|min:1|max:100',
+        ]);
+
+        $model = $factories[$data['model']]['model'] ?? '';
+        abort_unless(is_subclass_of($model, Model::class), 422);
+
+        $query = $model::query();
+        foreach ($data['where'] ?? [] as $clause) {
+            $column = $clause['column'];
+            $operator = $clause['operator'];
+            $value = $clause['value'] ?? null;
+            match ($operator) {
+                'null' => $query->whereNull($column),
+                'not_null' => $query->whereNotNull($column),
+                'in' => $query->whereIn($column, is_array($value) ? $value : [$value]),
+                'not_in' => $query->whereNotIn($column, is_array($value) ? $value : [$value]),
+                default => $query->where($column, $operator, $value),
+            };
+        }
+        foreach ($data['orderBy'] ?? [] as $order) {
+            $query->orderBy($order['column'], $order['direction']);
+        }
+        if (isset($data['limit'])) {
+            $query->limit($data['limit']);
+        }
+
+        return match ($data['action']) {
+            'first' => $query->first()?->toArray(),
+            'firstOrFail' => $query->firstOrFail()->toArray(),
+            'get' => $query->get()->map(static fn (Model $row) => $row->toArray())->all(),
+            'pluck' => $query->pluck($data['column'] ?? abort(422, 'Column is required for pluck.'))->values()->all(),
+            'value' => $query->value($data['column'] ?? abort(422, 'Column is required for value.')),
+            'count' => $query->count(),
+            'exists' => $query->exists(),
+            'update' => $this->updateQuery($query, $data['values'] ?? abort(422, 'Values are required for update.')),
+            'delete' => $query->delete(),
+        };
+    }
+
+    private function updateQuery(\Illuminate\Database\Eloquent\Builder $query, array $values): int
+    {
+        foreach (array_keys($values) as $column) {
+            abort_unless(is_string($column) && preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $column) === 1, 422, 'Invalid update column.');
+        }
+
+        return $query->toBase()->update($values);
     }
 }

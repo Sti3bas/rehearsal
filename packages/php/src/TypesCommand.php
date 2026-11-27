@@ -50,9 +50,10 @@ final class TypesCommand extends Command
         foreach ($operations->typeDefinitions() as $name => $definition) {
             $types = $definition['types'] ?? [];
             $handler = $definition['handler'];
-            $reflection = $handler instanceof Closure ? new ReflectionFunction($handler) : new ReflectionMethod($handler, '__invoke');
-            $input = $types['input'] ?? $this->ruleShape($definition['rules']);
-            $output = $types['output'] ?? $this->phpType((string) $reflection->getReturnType());
+            $methodName = is_string($definition['method'] ?? null) ? $definition['method'] : '__invoke';
+            $reflection = $handler instanceof Closure ? new ReflectionFunction($handler) : new ReflectionMethod($handler, $methodName);
+            $input = $types['input'] ?? $this->operationInput($reflection, $definition['rules'], $aliasesByClass, $usedHelpers);
+            $output = $types['output'] ?? PhpDocTypes::returnType($reflection, $aliasesByClass, $usedHelpers);
             $calls[$name] = "{ input: $input; output: $output }";
         }
         $artisan = $this->artisanTypes();
@@ -298,6 +299,43 @@ final class TypesCommand extends Command
             'array', 'json', 'object' => 'unknown[] | Record<string, unknown>',
             default => 'unknown',
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $rules
+     * @param  array<class-string, string>  $aliasesByClass
+     * @param  array<string, true>  $usedHelpers
+     */
+    private function operationInput(
+        ReflectionFunction|ReflectionMethod $reflection,
+        array $rules,
+        array $aliasesByClass,
+        array &$usedHelpers,
+    ): string {
+        if ($rules !== []) {
+            return $this->ruleShape($rules);
+        }
+
+        $params = $reflection->getParameters();
+        if ($params === []) {
+            return 'Record<string, never>';
+        }
+
+        if ($reflection instanceof ReflectionMethod && Operations::usesPayloadArray($reflection, $rules)) {
+            $docType = PhpDocTypes::paramType($params[0], $reflection, $aliasesByClass, $usedHelpers);
+
+            return $docType === 'Record<string, unknown>' ? 'Record<string, never>' : $docType;
+        }
+
+        $fields = [];
+        foreach ($params as $param) {
+            $optional = $param->isDefaultValueAvailable() || $param->allowsNull();
+            $tsType = PhpDocTypes::paramType($param, $reflection, $aliasesByClass, $usedHelpers);
+            $key = json_encode($param->getName(), JSON_THROW_ON_ERROR);
+            $fields[] = $key.($optional ? '?' : '').': '.$tsType;
+        }
+
+        return '{ '.implode('; ', $fields).' }';
     }
 
     /** @return array<string, string> */

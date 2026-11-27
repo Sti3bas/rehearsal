@@ -50,6 +50,28 @@ export type FactoryBuilder<K extends FactoryName> = FactoryBuilderBase<K> & {
 export type FactoryCountBuilder<K extends FactoryName> = FactoryCountBuilderBase<K> & {
   [S in FactoryState<K>]: (...args: FactoryStateMap<K>[S]) => FactoryCountBuilder<K>;
 };
+export type ModelWhereOperator = "=" | "!=" | "<" | "<=" | ">" | ">=" | "like";
+export type ModelColumn<K extends FactoryName> = keyof Factories[K]["model"] & string;
+export interface ModelQuery<K extends FactoryName> {
+  where(attrs: FactoryAttributes<K>): ModelQuery<K>;
+  where<C extends ModelColumn<K>>(column: C, value: Factories[K]["model"][C] | null): ModelQuery<K>;
+  where<C extends ModelColumn<K>>(column: C, operator: ModelWhereOperator, value: unknown): ModelQuery<K>;
+  whereIn<C extends ModelColumn<K>>(column: C, values: readonly Factories[K]["model"][C][]): ModelQuery<K>;
+  whereNotIn<C extends ModelColumn<K>>(column: C, values: readonly Factories[K]["model"][C][]): ModelQuery<K>;
+  whereNull(column: ModelColumn<K>): ModelQuery<K>;
+  whereNotNull(column: ModelColumn<K>): ModelQuery<K>;
+  orderBy(column: ModelColumn<K>, direction?: "asc" | "desc"): ModelQuery<K>;
+  limit(n: number): ModelQuery<K>;
+  first(): Promise<FactoryModel<K> | null>;
+  firstOrFail(): Promise<FactoryModel<K>>;
+  get(): Promise<FactoryModel<K>[]>;
+  pluck<C extends ModelColumn<K>>(column: C): Promise<Factories[K]["model"][C][]>;
+  value<C extends ModelColumn<K>>(column: C): Promise<Factories[K]["model"][C] | null>;
+  count(): Promise<number>;
+  exists(): Promise<boolean>;
+  update(values: FactoryAttributes<K>): Promise<number>;
+  delete(): Promise<number>;
+}
 export type BatchFactory = {
   [K in FactoryName]: FactoryOptions<K> & {
     model: K;
