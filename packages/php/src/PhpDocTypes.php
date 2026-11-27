@@ -17,6 +17,12 @@ use ReflectionUnionType;
 
 final class PhpDocTypes
 {
+    /** @var array<string, array{namespace: string, imports: array<string, string>}> */
+    private static array $fileContextCache = [];
+
+    /** @var array{namespace: string, imports: array<string, string>} */
+    private static array $currentContext = ['namespace' => '', 'imports' => []];
+
     /**
      * @param  array<class-string, string>  $aliasesByClass
      * @param  array<string, true>  $usedHelpers
@@ -32,8 +38,14 @@ final class PhpDocTypes
             return null;
         }
         $tag = self::extractParamTag($doc, $parameter->getName());
+        if ($tag === null) {
+            return null;
+        }
 
-        return $tag !== null ? self::docToTs($tag, $aliasesByClass, $usedHelpers, forInput: true) : null;
+        return self::withFileContext(
+            $function,
+            static fn () => self::docToTs($tag, $aliasesByClass, $usedHelpers, forInput: true),
+        );
     }
 
     /**
@@ -73,7 +85,10 @@ final class PhpDocTypes
         if (is_string($doc)) {
             $tag = self::extractReturnTag($doc);
             if ($tag !== null) {
-                $parsed = self::docToTs($tag, $aliasesByClass, $usedHelpers, forInput: false);
+                $parsed = self::withFileContext(
+                    $function,
+                    static fn () => self::docToTs($tag, $aliasesByClass, $usedHelpers, forInput: false),
+                );
                 if ($parsed !== null && ($parsed !== 'unknown' || $native === 'unknown')) {
                     return $parsed;
                 }
@@ -578,7 +593,7 @@ final class PhpDocTypes
             'null', 'void' => 'null',
             'array', 'iterable' => 'Record<string, unknown>',
             'mixed', 'object', 'scalar' => 'unknown',
-            default => self::classToTs(ltrim($ident, '\\'), $aliasesByClass, $usedHelpers, $forInput),
+            default => self::classToTs(self::resolveClassName($ident), $aliasesByClass, $usedHelpers, $forInput),
         };
     }
 
@@ -628,5 +643,98 @@ final class PhpDocTypes
         while ($pos < $len && ctype_space($expr[$pos])) {
             $pos++;
         }
+    }
+
+    /**
+     * @template T
+     * @param  callable(): T  $callback
+     * @return T
+     */
+    private static function withFileContext(ReflectionFunctionAbstract $function, callable $callback): mixed
+    {
+        $previous = self::$currentContext;
+        $file = $function->getFileName();
+        self::$currentContext = is_string($file) && is_file($file)
+            ? self::fileContext($file)
+            : ['namespace' => '', 'imports' => []];
+
+        try {
+            return $callback();
+        } finally {
+            self::$currentContext = $previous;
+        }
+    }
+
+    private static function resolveClassName(string $ident): string
+    {
+        if (str_starts_with($ident, '\\')) {
+            return ltrim($ident, '\\');
+        }
+        $parts = explode('\\', $ident, 2);
+        $head = $parts[0];
+        if (isset(self::$currentContext['imports'][$head])) {
+            $resolved = self::$currentContext['imports'][$head];
+
+            return isset($parts[1]) ? $resolved.'\\'.$parts[1] : $resolved;
+        }
+        if (self::$currentContext['namespace'] !== '') {
+            $namespaced = self::$currentContext['namespace'].'\\'.$ident;
+            if (class_exists($namespaced) || interface_exists($namespaced)) {
+                return $namespaced;
+            }
+        }
+
+        return $ident;
+    }
+
+    /** @return array{namespace: string, imports: array<string, string>} */
+    private static function fileContext(string $file): array
+    {
+        if (isset(self::$fileContextCache[$file])) {
+            return self::$fileContextCache[$file];
+        }
+
+        $source = file_get_contents($file);
+        if (! is_string($source)) {
+            return self::$fileContextCache[$file] = ['namespace' => '', 'imports' => []];
+        }
+
+        $namespace = '';
+        if (preg_match('/^\s*namespace\s+([^;{\s]+)\s*[;{]/m', $source, $match) === 1) {
+            $namespace = trim($match[1], '\\');
+        }
+
+        $imports = [];
+        if (preg_match_all('/^\s*use\s+(?!function\b|const\b)([^;]+);/m', $source, $matches)) {
+            foreach ($matches[1] as $clause) {
+                $clause = trim($clause);
+                if (str_contains($clause, '{')) {
+                    if (preg_match('/^([^{]+)\{([^}]+)\}$/', $clause, $group) === 1) {
+                        $prefix = trim($group[1], " \t\n\r\\").'\\';
+                        foreach (explode(',', $group[2]) as $item) {
+                            self::recordImport($imports, $prefix.trim($item));
+                        }
+                    }
+
+                    continue;
+                }
+                foreach (explode(',', $clause) as $item) {
+                    self::recordImport($imports, trim($item));
+                }
+            }
+        }
+
+        return self::$fileContextCache[$file] = ['namespace' => $namespace, 'imports' => $imports];
+    }
+
+    /** @param array<string, string> $imports */
+    private static function recordImport(array &$imports, string $item): void
+    {
+        if (preg_match('/^([^\s]+)(?:\s+as\s+([^\s]+))?$/i', $item, $match) !== 1) {
+            return;
+        }
+        $fqcn = ltrim($match[1], '\\');
+        $alias = $match[2] ?? class_basename($fqcn);
+        $imports[$alias] = $fqcn;
     }
 }
