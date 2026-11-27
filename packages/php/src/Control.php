@@ -216,10 +216,13 @@ final readonly class Control
         }
 
         $modelTypes = array_values(array_filter($types, static fn (array $type) => $type['kind'] === 'model'));
-        if ($modelTypes !== [] && ((is_array($raw) && isset($raw['id']) && (is_int($raw['id']) || is_string($raw['id']))) || is_int($raw) || is_string($raw))) {
+        $kinds = array_column($types, 'kind');
+        $allowsScalarMatch = (is_string($raw) && (in_array('string', $kinds, true) || in_array('mixed', $kinds, true)))
+            || (is_int($raw) && (in_array('int', $kinds, true) || in_array('float', $kinds, true) || in_array('mixed', $kinds, true)));
+        if ($modelTypes !== [] && ! $allowsScalarMatch && ((is_array($raw) && isset($raw['id']) && (is_int($raw['id']) || is_string($raw['id']))) || is_int($raw) || is_string($raw))) {
             $id = is_array($raw) ? $raw['id'] : $raw;
             $concrete = array_values(array_filter($modelTypes, static fn (array $type) => ! (new ReflectionClass($type['class']))->isAbstract()));
-            if (count($concrete) === 1 && ! is_array($raw) || (is_array($raw) && count($concrete) === 1)) {
+            if (count($concrete) === 1) {
                 return $concrete[0]['class']::query()->findOrFail($id);
             }
             if (is_array($raw)) {
