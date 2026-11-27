@@ -4,6 +4,13 @@ import { expect, test } from "@sti3bas/rehearsal";
 
 const collision = "same-address@example.test";
 
+test("creates discovered models and rejects unregistered factory states", async ({ laravel }) => {
+  const category = await laravel.factory("Category", { name: "Collectibles" });
+  expect(category.name).toBe("Collectibles");
+  await expect(laravel.factory("Category", {}, { states: ["count"] })).rejects.toThrow("HTTP 422");
+  await expect(laravel.factory("App\\Models\\Category")).rejects.toThrow("HTTP 422");
+});
+
 test("resolves configured belongs-to references in a factory batch", async ({ laravel }) => {
   const [category, users] = await laravel.factory([
     { model: "Category", attrs: { name: "Collectibles" } },

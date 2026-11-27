@@ -16,6 +16,12 @@ declare module "@sti3bas/rehearsal" {
         states: never;
         relations: {};
       };
+      StandaloneFactoryModel: {
+        attributes: { active?: boolean | null; id?: number };
+        model: { id: number; active?: boolean | null };
+        states: never;
+        relations: {};
+      };
     };
     operations: {
       "listing.sell": { input: { id: number }; output: { sold: boolean } };
@@ -43,7 +49,13 @@ test("generated types reach the Playwright fixture", async ({ laravel }) => {
   ]);
   expectTypeOf(user.name).toEqualTypeOf<string | undefined>();
   expectTypeOf(listings[0].id).toEqualTypeOf<number>();
+  const discovered = await laravel.create("StandaloneFactoryModel", { attrs: { active: true } });
+  expectTypeOf(discovered.active).toEqualTypeOf<boolean | null | undefined>();
 
+  // @ts-expect-error discovered attributes are typed too
+  await laravel.create("StandaloneFactoryModel", { attrs: { active: "yes" } });
+  // @ts-expect-error states must be registered
+  await laravel.create("StandaloneFactoryModel", { state: "active" });
   // @ts-expect-error unregistered model
   await laravel.factory("Missing");
   // @ts-expect-error unregistered state

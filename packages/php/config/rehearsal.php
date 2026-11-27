@@ -25,7 +25,7 @@ return [
         'seeder' => null,
     ],
     'disks' => ['local', 'public'],
-    'factories' => [],
+    'factories' => ['discover' => true],
     'operations' => [],
     'artisan' => [],
     'schedule' => [],

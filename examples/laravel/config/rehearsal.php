@@ -40,8 +40,7 @@ return [
     ],
     'login' => ['guard' => 'web'],
     'factories' => [
-        'Category' => ['model' => Category::class],
-        'User' => ['model' => User::class, 'states' => ['staff' => 'staff'], 'relations' => ['category' => 'Category']],
+        'User' => ['states' => ['staff' => 'staff'], 'relations' => ['category' => 'Category']],
     ],
     'artisan' => ['about' => ['command' => 'about', 'fixed' => ['--only' => 'environment']]],
     'schedule' => [
