@@ -3,10 +3,11 @@ import type { APIRequestContext, BrowserContext, Page } from "@playwright/test";
 import { createFactoryBuilder, serializeFactoryArg, tagModel } from "./factory.js";
 import { encodeHttpRules, type HttpFakeRules } from "./http.js";
 import { Mailbox } from "./mail.js";
+import { createModelQuery } from "./model.js";
 import { Queue, type DrainOptions, type DrainResult } from "./queue.js";
 import { capabilityHeader, loopback, markerCookie, markerHeader, protocol } from "./transport.js";
 import { claimRoute, encodeRouteResponse, matchesRoute, mockResponse, routePattern, wait, waitForRouteGate, type RouteResponse, type RouteTarget } from "./routes.js";
-import type { ArtisanInput, ArtisanName, BatchChecks, BatchFactory, BatchResults, FactoryAttributes, FactoryBuilder, FactoryModel, FactoryName, FactoryOptions, FactoryState, FaultArguments, FaultTarget, InputArguments, OperationInput, OperationName, OperationOutput, ScheduleName } from "./schema.js";
+import type { ArtisanInput, ArtisanName, BatchChecks, BatchFactory, BatchResults, FactoryAttributes, FactoryBuilder, FactoryModel, FactoryName, FactoryOptions, FactoryState, FaultArguments, FaultTarget, InputArguments, ModelQuery, OperationInput, OperationName, OperationOutput, ScheduleName } from "./schema.js";
 
 export type FactoryCall =
   | { state: string; args?: readonly unknown[] }
@@ -189,6 +190,10 @@ export class Laravel {
 
   create<K extends FactoryName>(model: K, { state, attrs }: { state?: FactoryState<NoInfer<K>>; attrs?: FactoryAttributes<NoInfer<K>> } = {}): Promise<FactoryModel<K>> {
     return this.factory(model, attrs ?? {}, { states: state === undefined ? [] : [state] });
+  }
+
+  model<K extends FactoryName>(model: K): ModelQuery<K> {
+    return createModelQuery((payload) => this.operation("model.query", payload), model);
   }
 
   private async sendFactories(items: readonly FactoryDefinition[]) {

@@ -314,3 +314,77 @@ PHP);
         }
     }
 });
+
+it('discovers method-level #[Operation] handlers, binds typed args, and reflects PHP/PHPDoc types', function () {
+    $dir = sys_get_temp_dir().'/rehearsal-method-ops-'.bin2hex(random_bytes(8));
+    mkdir($dir, 0777, true);
+    $ns = 'Tests\\Fixtures\\MethodOps'.bin2hex(random_bytes(4));
+
+    file_put_contents($dir.'/BillingOps.php', <<<PHP
+<?php
+namespace {$ns};
+
+use Sti3bas\\Rehearsal\\Attributes\\Operation;
+
+final class BillingOps
+{
+    /**
+     * @param  'standard'|'premium'  \$plan
+     * @return array{userId: int, plan: string, trialDays: int, notes: list<string>}
+     */
+    #[Operation('billing.subscribe')]
+    public static function subscribe(int \$userId, string \$plan, int \$trialDays = 14, ?string \$note = null): array
+    {
+        return [
+            'userId' => \$userId,
+            'plan' => \$plan,
+            'trialDays' => \$trialDays,
+            'notes' => \$note === null ? [] : [\$note],
+        ];
+    }
+
+    /** @return list<int> */
+    #[Operation]
+    public function activeIds(): array
+    {
+        return [1, 2, 3];
+    }
+}
+PHP);
+
+    require_once $dir.'/BillingOps.php';
+    $typesPath = sys_get_temp_dir().'/rehearsal-method-ops-types-'.bin2hex(random_bytes(8)).'.d.ts';
+
+    try {
+        config([
+            'rehearsal.operations' => ['discover' => true, 'paths' => [$dir]],
+            'rehearsal.factories' => ['discover' => false],
+            'rehearsal.artisan' => ['discover' => false],
+            'rehearsal.fault_paths' => false,
+        ]);
+        $this->app->register(ServiceProvider::class);
+
+        $operations = app(\Sti3bas\Rehearsal\Operations::class);
+        expect($operations->invoke('billing.subscribe', ['userId' => 42, 'plan' => 'premium']))
+            ->toBe(['userId' => 42, 'plan' => 'premium', 'trialDays' => 14, 'notes' => []]);
+        expect($operations->invoke('billing.subscribe', ['userId' => '7', 'plan' => 'standard', 'trialDays' => 30, 'note' => 'vip']))
+            ->toBe(['userId' => 7, 'plan' => 'standard', 'trialDays' => 30, 'notes' => ['vip']]);
+        expect($operations->invoke('billing-ops.active-ids', []))->toBe([1, 2, 3]);
+
+        $this->artisan('rehearsal:types', ['path' => $typesPath])->assertSuccessful();
+        $contents = file_get_contents($typesPath);
+        expect($contents)
+            ->toContain('"billing.subscribe": { input: { "userId": number; "plan": "standard" | "premium"; "trialDays"?: number; "note"?: string | null }; output: { userId: number; plan: string; trialDays: number; notes: string[] } }')
+            ->toContain('"billing-ops.active-ids": { input: Record<string, never>; output: number[] }');
+    } finally {
+        if (is_file($dir.'/BillingOps.php')) {
+            unlink($dir.'/BillingOps.php');
+        }
+        if (is_dir($dir)) {
+            rmdir($dir);
+        }
+        if (is_file($typesPath)) {
+            unlink($typesPath);
+        }
+    }
+});

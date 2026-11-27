@@ -78,7 +78,7 @@ export const reverbTest = test.extend<{ reverb: Reverb }>({
 
 export { expect } from "@playwright/test";
 export { Laravel, type FactoryCall, type FactoryDefinition, type TypesenseClientConfig } from "./client.js";
-export type { FactoryBuilder, FactoryCountBuilder, FactoryModel, FactoryModelRef, FactoryName } from "./schema.js";
+export type { FactoryBuilder, FactoryCountBuilder, FactoryModel, FactoryModelRef, FactoryName, ModelColumn, ModelQuery, ModelWhereOperator } from "./schema.js";
 export type { RouteTarget, RouteResponse } from "./routes.js";
 export type { Mailbox, MailFilter, MailMessage, MailSummary } from "./mail.js";
 export type { DrainOptions, DrainResult, FailedJob } from "./queue.js";
