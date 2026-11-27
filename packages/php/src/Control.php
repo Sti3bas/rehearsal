@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use ReflectionClass;
+use ReflectionEnum;
 use ReflectionProperty;
 use Throwable;
 
@@ -259,9 +260,12 @@ final readonly class Control
             if ($kind === 'enum' && (is_string($raw) || is_int($raw))) {
                 /** @var class-string<BackedEnum> $enumClass */
                 $enumClass = $type['class'];
-                $case = $enumClass::tryFrom($raw);
-                if ($case !== null) {
-                    return $case;
+                $backing = (new ReflectionEnum($enumClass))->getBackingType()?->getName();
+                if (($backing === 'int' && is_int($raw)) || ($backing === 'string' && is_string($raw))) {
+                    $case = $enumClass::tryFrom($raw);
+                    if ($case !== null) {
+                        return $case;
+                    }
                 }
             }
             if ($kind === 'date' && is_string($raw)) {
