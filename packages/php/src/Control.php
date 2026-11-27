@@ -8,6 +8,7 @@ use BackedEnum;
 use Carbon\CarbonImmutable;
 use Closure;
 use DateTimeImmutable;
+use Illuminate\Contracts\Auth\StatefulGuard;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -81,8 +82,14 @@ final readonly class Control
         abort_unless($options === true || is_array($options), 404, 'Rehearsal login is not enabled.');
         $input = $request->validate(['id' => 'required']);
         abort_unless(is_int($input['id']) || is_string($input['id']), 422);
-        $guardName = is_array($options) ? ($options['guard'] ?? null) : null;
+        $guardName = is_array($options) && is_string($options['guard'] ?? null) && $options['guard'] !== ''
+            ? $options['guard']
+            : null;
         $guard = Auth::guard($guardName);
+        if ($guardName === null && ! $guard instanceof StatefulGuard && is_array(config('auth.guards.web'))) {
+            $guard = Auth::guard('web');
+        }
+        abort_unless($guard instanceof StatefulGuard, 422, 'Rehearsal login requires a stateful guard.');
         abort_unless($guard->loginUsingId($input['id']), 404);
         $request->session()->regenerate();
 
