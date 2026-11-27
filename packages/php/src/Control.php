@@ -118,7 +118,7 @@ final readonly class Control
                     abort_unless(is_callable([$model, 'factory']), 422);
                     $factory = $model::factory();
                 }
-                $states = $this->factories->states($definition);
+                $states = $this->factories->states(['factory' => $factory::class, ...$definition]);
                 $create = function () use ($factory, $model, $item, $definition, $states, $factories, $results, $data) {
                     foreach ($item['states'] ?? [] as $state) {
                         if (is_string($state)) {
