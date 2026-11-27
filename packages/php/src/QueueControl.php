@@ -106,7 +106,7 @@ final class QueueControl
 
     private static function queueOptions(array $input): array
     {
-        $queues = config('rehearsal.queues', [config('queue.connections.database.queue', 'default')]);
+        $queues = self::queues();
         $data = Validator::validate($input, [
             'queues' => 'sometimes|array|list|min:1|max:10',
             'queues.*' => ['required', 'string', Rule::in($queues)],
@@ -114,6 +114,55 @@ final class QueueControl
         ]);
 
         return $data + ['queues' => $queues, 'maxJobs' => 25];
+    }
+
+    /** @return list<string> */
+    public static function queues(): array
+    {
+        $configured = config('rehearsal.queues');
+        if (is_array($configured) && $configured !== []) {
+            return array_values(array_unique(array_filter($configured, 'is_string')));
+        }
+
+        $queues = [];
+        $push = static function (mixed $value) use (&$queues): void {
+            foreach ((array) $value as $entry) {
+                if (! is_string($entry)) {
+                    continue;
+                }
+                foreach (explode(',', $entry) as $name) {
+                    $name = trim($name);
+                    if ($name !== '') {
+                        $queues[] = $name;
+                    }
+                }
+            }
+        };
+
+        $push(config('queue.connections.database.queue', 'default'));
+
+        $collect = static function (mixed $supervisors) use ($push): void {
+            if (! is_array($supervisors)) {
+                return;
+            }
+            foreach ($supervisors as $supervisor) {
+                if (! is_array($supervisor) || ! isset($supervisor['queue'])) {
+                    continue;
+                }
+                $push($supervisor['queue']);
+            }
+        };
+
+        $collect(config('horizon.defaults', []));
+        foreach ((array) config('horizon.environments', []) as $environment) {
+            $collect($environment);
+        }
+
+        if ($queues === []) {
+            $queues[] = 'default';
+        }
+
+        return array_values(array_unique($queues));
     }
 
     private static function failures(array $queues): Builder

@@ -131,6 +131,7 @@ it('protects control calls and fences markers when a test slot is reused', funct
             'run' => $run->id,
             'capability' => $capability,
             'integrations' => [],
+            'login' => false,
             'operations' => [
                 'probe.title' => [
                     'rules' => ['title' => 'required|string'],

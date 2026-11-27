@@ -8,6 +8,7 @@ use BackedEnum;
 use Carbon\CarbonImmutable;
 use Closure;
 use DateTimeImmutable;
+use Illuminate\Contracts\Auth\StatefulGuard;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -78,10 +79,17 @@ final readonly class Control
     {
         $this->protocol->authorize($request);
         $options = config('rehearsal.login');
-        abort_unless(is_array($options), 404, 'Rehearsal login is not enabled.');
+        abort_unless($options === true || is_array($options), 404, 'Rehearsal login is not enabled.');
         $input = $request->validate(['id' => 'required']);
         abort_unless(is_int($input['id']) || is_string($input['id']), 422);
-        $guard = Auth::guard($options['guard'] ?? 'web');
+        $guardName = is_array($options) && is_string($options['guard'] ?? null) && $options['guard'] !== ''
+            ? $options['guard']
+            : null;
+        $guard = Auth::guard($guardName);
+        if ($guardName === null && ! $guard instanceof StatefulGuard && is_array(config('auth.guards.web'))) {
+            $guard = Auth::guard('web');
+        }
+        abort_unless($guard instanceof StatefulGuard, 422, 'Rehearsal login requires a stateful guard.');
         abort_unless($guard->loginUsingId($input['id']), 404);
         $request->session()->regenerate();
 
@@ -356,10 +364,24 @@ final readonly class Control
     private function artisan(array $input): array
     {
         $data = Validator::validate($input, ['name' => 'required|string', 'args' => 'present|array']);
-        $entry = config('rehearsal.artisan')[$data['name']] ?? null;
-        abort_unless(is_array($entry), 404, 'Artisan operation is not allowlisted.');
-        $args = Validator::validate($data['args'], $entry['rules'] ?? []);
-        $exit = Artisan::call($entry['command'], ($entry['fixed'] ?? []) + $args);
+        abort_if(array_key_exists('command', $data['args']), 422, 'Artisan arguments must not override the command name.');
+        $configured = config('rehearsal.artisan', []);
+        $name = $data['name'];
+        $entry = is_array($configured) ? ($configured[$name] ?? null) : null;
+
+        if (is_array($entry)) {
+            $args = Validator::validate($data['args'], $entry['rules'] ?? []);
+            $exit = Artisan::call($entry['command'] ?? $name, ($entry['fixed'] ?? []) + $args);
+
+            return ['code' => $exit];
+        }
+
+        $discover = $configured === true || (is_array($configured) && ($configured['discover'] ?? false) === true);
+        if (! $discover || $entry === false || ! array_key_exists($name, Artisan::all())) {
+            abort(404, 'Artisan operation is not allowlisted.');
+        }
+
+        $exit = Artisan::call($name, $data['args']);
 
         return ['code' => $exit];
     }

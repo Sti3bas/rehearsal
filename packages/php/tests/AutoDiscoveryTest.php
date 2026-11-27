@@ -189,3 +189,128 @@ PHP);
         }
     }
 });
+
+it('auto-discovers #[Callback] classes, custom integrations, Horizon queues, Artisan commands, and route fault paths', function () {
+    $dir = sys_get_temp_dir().'/rehearsal-zero-'.bin2hex(random_bytes(8));
+    mkdir($dir, 0777, true);
+    $ns = 'Tests\\Fixtures\\Zero'.bin2hex(random_bytes(4));
+
+    file_put_contents($dir.'/StaticCallback.php', <<<PHP
+<?php
+namespace {$ns};
+
+use Illuminate\\Http\\Request;
+use Sti3bas\\Rehearsal\\Attributes\\Callback;
+use Sti3bas\\Rehearsal\\CallbackReference;
+
+#[Callback('/webhooks/demo')]
+final class StaticCallback implements CallbackReference
+{
+    public function verifiedReference(Request \$request): ?string
+    {
+        return 'ref-1';
+    }
+}
+PHP);
+
+    file_put_contents($dir.'/DynamicCallback.php', <<<PHP
+<?php
+namespace {$ns};
+
+use Illuminate\\Http\\Request;
+use Sti3bas\\Rehearsal\\Attributes\\Callback;
+use Sti3bas\\Rehearsal\\CallbackReference;
+
+#[Callback]
+final class DynamicCallback implements CallbackReference
+{
+    public static function path(): string
+    {
+        return '/stripe/webhook';
+    }
+
+    public function verifiedReference(Request \$request): ?string
+    {
+        return 'cus_123';
+    }
+}
+PHP);
+
+    file_put_contents($dir.'/CustomIntegration.php', <<<PHP
+<?php
+namespace {$ns};
+
+use Sti3bas\\Rehearsal\\Attempt;
+use Sti3bas\\Rehearsal\\Integration;
+use Sti3bas\\Rehearsal\\Run;
+
+final class CustomIntegration implements Integration
+{
+    public function provision(Run \$run): void {}
+    public function bind(Attempt \$attempt): void {}
+    public function reset(Attempt \$attempt): void {}
+    public function cleanup(Run \$run): void {}
+}
+PHP);
+
+    require_once $dir.'/StaticCallback.php';
+    require_once $dir.'/DynamicCallback.php';
+    require_once $dir.'/CustomIntegration.php';
+
+    $typesPath = sys_get_temp_dir().'/rehearsal-zero-types-'.bin2hex(random_bytes(8)).'.d.ts';
+
+    try {
+        \Illuminate\Support\Facades\Route::get('/api/items/{item}/offers', static fn () => ['ok' => true]);
+        config([
+            'rehearsal.callbacks' => ['discover' => true, 'paths' => [$dir]],
+            'rehearsal.integrations' => [
+                'discover' => true,
+                'paths' => [$dir],
+                'database' => \Sti3bas\Rehearsal\Database::class,
+            ],
+            'rehearsal.mailpit.api' => 'http://127.0.0.1:8025',
+            'rehearsal.reverb.origin' => 'http://127.0.0.1:18080',
+            'rehearsal.queues' => null,
+            'rehearsal.artisan' => ['discover' => true],
+            'rehearsal.fault_paths' => ['discover' => true],
+            'rehearsal.factories' => ['discover' => false],
+            'rehearsal.operations' => ['discover' => false],
+            'horizon.defaults' => ['sup-1' => ['queue' => ['high', 'default']]],
+            'horizon.environments' => ['production' => ['sup-2' => ['queue' => ['processing', 'moderation']]]],
+        ]);
+        $this->app->register(ServiceProvider::class);
+
+        expect(\Sti3bas\Rehearsal\Callbacks::all())
+            ->toHaveKey('/webhooks/demo', $ns.'\\StaticCallback')
+            ->toHaveKey('/stripe/webhook', $ns.'\\DynamicCallback');
+
+        $integrations = app(\Sti3bas\Rehearsal\Integrations::class)->classes();
+        expect($integrations)
+            ->toContain(\Sti3bas\Rehearsal\Database::class)
+            ->toContain(\Sti3bas\Rehearsal\Mailpit::class)
+            ->toContain(\Sti3bas\Rehearsal\Reverb::class)
+            ->toContain($ns.'\\CustomIntegration');
+
+        expect(\Sti3bas\Rehearsal\QueueControl::queues())
+            ->toContain('default', 'high', 'processing', 'moderation');
+
+        expect(\Sti3bas\Rehearsal\RouteMocks::faultPathAllowed('/api/items/*/offers'))->toBeTrue();
+        expect(\Sti3bas\Rehearsal\RouteMocks::faultPathAllowed('/_rehearsal/call'))->toBeFalse();
+
+        $this->artisan('rehearsal:types', ['path' => $typesPath])->assertSuccessful();
+        $contents = file_get_contents($typesPath);
+        expect($contents)
+            ->toContain('"/api/items/*/offers"')
+            ->toContain('"list": Record<string, unknown>');
+    } finally {
+        foreach (glob($dir.'/*.php') ?: [] as $file) {
+            unlink($file);
+        }
+        if (is_dir($dir)) {
+            rmdir($dir);
+        }
+        if (is_file($typesPath)) {
+            unlink($typesPath);
+        }
+    }
+});

@@ -99,7 +99,7 @@ final class Reverb implements Integration, ClientMetadata
 
     private function broadcaster(): PusherBroadcaster
     {
-        abort_unless(in_array(self::class, config('rehearsal.integrations'), true), 404, 'Rehearsal Reverb is not enabled.');
+        abort_unless(app(Integrations::class)->has(self::class), 404, 'Rehearsal Reverb is not enabled.');
 
         return app(BroadcastManager::class)->connection('reverb');
     }

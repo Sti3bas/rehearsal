@@ -7,16 +7,45 @@ namespace Sti3bas\Rehearsal;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Request;
 use LogicException;
+use ReflectionClass;
 use RuntimeException;
+use Sti3bas\Rehearsal\Attributes\Callback;
 
 final readonly class Callbacks
 {
     public function __construct(private Container $container, private Protocol $protocol) {}
 
+    /** @return array<string, class-string<CallbackReference>> */
+    public static function all(): array
+    {
+        $configured = config('rehearsal.callbacks', []);
+        if (! is_array($configured)) {
+            return [];
+        }
+
+        $discover = is_bool($configured['discover'] ?? null) ? $configured['discover'] : false;
+        $paths = is_array($configured['paths'] ?? null) ? $configured['paths'] : ClassDiscovery::DEFAULT_HELPER_PATHS;
+
+        $entries = $discover ? self::discover($paths) : [];
+        foreach ($configured as $path => $class) {
+            if (($path === 'discover' && is_bool($class)) || ($path === 'paths' && is_array($class))) {
+                continue;
+            }
+            if ($class === false) {
+                unset($entries[$path]);
+
+                continue;
+            }
+            $entries[$path] = $class;
+        }
+
+        return $entries;
+    }
+
     public static function configured(string $path): bool
     {
         return $path !== '/_rehearsal' && ! str_starts_with($path, '/_rehearsal/')
-            && isset(config('rehearsal.callbacks')[$path]);
+            && isset(self::all()[$path]);
     }
 
     public function bind(string $path, string $reference): void
@@ -51,7 +80,7 @@ final readonly class Callbacks
     {
         abort_unless(in_array($request->server->get('REMOTE_ADDR'), ['127.0.0.1', '::1'], true), 403);
         $path = $request->getPathInfo();
-        $resolver = $this->container->make(config('rehearsal.callbacks')[$path]);
+        $resolver = $this->container->make(self::all()[$path]);
         if (! $resolver instanceof CallbackReference) {
             throw new LogicException('A Rehearsal callback resolver must implement CallbackReference.');
         }
@@ -68,6 +97,41 @@ final readonly class Callbacks
         $marker = $run->lock($key, LOCK_SH, static fn () => file_get_contents($run->path($key.'.marker')));
 
         return $this->protocol->resolve($marker);
+    }
+
+    /**
+     * @param  list<string>  $paths
+     * @return array<string, class-string<CallbackReference>>
+     */
+    private static function discover(array $paths): array
+    {
+        $entries = [];
+        foreach (ClassDiscovery::classes($paths) as $class) {
+            $reflection = new ReflectionClass($class);
+            if (! $reflection->isInstantiable() || ! $reflection->implementsInterface(CallbackReference::class)) {
+                continue;
+            }
+            $attributes = $reflection->getAttributes(Callback::class);
+            if ($attributes === []) {
+                continue;
+            }
+            /** @var Callback $attribute */
+            $attribute = $attributes[0]->newInstance();
+            $path = $attribute->path;
+            if ($path === null && $reflection->hasMethod('path')) {
+                $method = $reflection->getMethod('path');
+                if ($method->isPublic() && $method->isStatic()) {
+                    $path = $method->invoke(null);
+                }
+            }
+            if (! is_string($path) || $path === '') {
+                continue;
+            }
+            $path = '/'.ltrim($path, '/');
+            $entries[$path] = $class;
+        }
+
+        return $entries;
     }
 
     private function key(string $path, string $reference): string
