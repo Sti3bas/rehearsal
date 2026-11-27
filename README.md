@@ -21,7 +21,7 @@ Rehearsal joins a real Laravel app to native Playwright Test. A worker can creat
 
 **Requirements:** Laravel 13, PHP 8.3+ with the matching PDO extension, Node 22.18+ in the 22 line or Node 24 LTS, and Playwright Test 1.65.1 or compatible. The managed server uses PHP CLI workers (Linux/macOS). Use a classic Laravel request lifecycle, not Octane or another persistent application runtime.
 
-**Release status:** The packages are not published yet. Use [a Git revision](#install-from-git) or [the runnable starter](#run-from-source) until the commands below are available.
+Install Rehearsal as a development dependency from [Packagist](https://packagist.org/packages/sti3bas/rehearsal) and [npm](https://www.npmjs.com/package/@sti3bas/rehearsal):
 
 ```sh
 composer require --dev sti3bas/rehearsal
@@ -31,18 +31,6 @@ npx playwright install chromium
 ```
 
 The installer writes `.env.playwright` without overwriting an existing file. Ignore `.env.playwright` and `.rehearsal/`. SQLite is the default. Keep Laravel's migrations for the database-backed sessions, cache, and queues you use (including the failed-jobs table for queue drains).
-
-### Install from Git
-
-Add the Rehearsal repository to the Laravel application's Composer repositories, then pin both development dependencies to the same full Git SHA. Replace `<branch>` with the branch containing the revision (for example, `main`) and `<commit>` with the full SHA.
-
-```sh
-composer config repositories.rehearsal vcs https://github.com/Sti3bas/rehearsal.git
-composer require --dev 'sti3bas/rehearsal:dev-<branch>#<commit>'
-npm install -D 'git+https://github.com/Sti3bas/rehearsal.git#<commit>' @playwright/test
-```
-
-Composer resolves the development branch's metadata but locks the exact commit. npm builds the TypeScript package during Git installation. If GitHub access requires credentials, configure Composer's GitHub OAuth and Git authentication outside the dependency manifests and lockfiles. Then run the Artisan and Playwright install commands above.
 
 The PHP package allows only the `testing` environment by default. Set `rehearsal.environments` in your application's config or use the comma-separated `REHEARSAL_ENVIRONMENTS` variable. New installer-generated files opt in automatically; for an existing `.env.playwright`, add `REHEARSAL_ENVIRONMENTS=playwright` or configure the allowlist in your app. To use a different environment, run `php artisan rehearsal:install --environment=browser-tests` and set `laravelServer({ environment: "browser-tests" })`. The example app opts into `playwright` explicitly.
 
