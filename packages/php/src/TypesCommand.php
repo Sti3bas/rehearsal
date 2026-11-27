@@ -8,17 +8,23 @@ use BackedEnum;
 use Closure;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use ReflectionFunction;
 use ReflectionMethod;
+use Throwable;
 
 final class TypesCommand extends Command
 {
+    private ?string $inMemorySchema = null;
+
+    private bool $inMemorySchemaAttempted = false;
     protected $signature = 'rehearsal:types {path : Destination .d.ts file} {--database= : Read columns from this configured connection}';
 
     protected $description = 'Generate TypeScript declarations for this application’s Rehearsal configuration';
 
-    public function handle(Operations $operations, Factories $registry): int
+    public function handle(Operations $operations, Factories $registry, Schedules $schedules): int
     {
         $path = $this->argument('path');
         if (! str_ends_with($path, '.d.ts')) {
@@ -56,7 +62,7 @@ final class TypesCommand extends Command
             'factories' => $this->shape($factories),
             'operations' => $this->shape($calls),
             'artisan' => $this->shape($artisan),
-            'schedules' => $this->literals(array_keys(config('rehearsal.schedule'))),
+            'schedules' => $this->literals(array_keys($schedules->all())),
             'faultPaths' => $this->literals(config('rehearsal.fault_paths')),
         ]);
         $helperImport = '';
@@ -99,6 +105,33 @@ final class TypesCommand extends Command
             foreach (Schema::connection($database)->getColumns($model->getTable()) as $column) {
                 $type = $this->columnType(strtolower($column['type_name']));
                 $attributes[$column['name']] = $column['nullable'] ? "$type | null" : $type;
+            }
+        } else {
+            $loaded = false;
+            $modelConnection = $model->getConnectionName();
+            try {
+                if (Schema::connection($modelConnection)->hasTable($model->getTable())) {
+                    foreach (Schema::connection($modelConnection)->getColumns($model->getTable()) as $column) {
+                        $type = $this->columnType(strtolower($column['type_name']));
+                        $attributes[$column['name']] = $column['nullable'] ? "$type | null" : $type;
+                    }
+                    $loaded = true;
+                }
+            } catch (Throwable) {
+            }
+            if (! $loaded) {
+                $ephemeral = $this->inMemorySchemaConnection();
+                if ($ephemeral !== null) {
+                    try {
+                        if (Schema::connection($ephemeral)->hasTable($model->getTable())) {
+                            foreach (Schema::connection($ephemeral)->getColumns($model->getTable()) as $column) {
+                                $type = $this->columnType(strtolower($column['type_name']));
+                                $attributes[$column['name']] = $column['nullable'] ? "$type | null" : $type;
+                            }
+                        }
+                    } catch (Throwable) {
+                    }
+                }
             }
         }
         $attributes[$model->getKeyName()] = $this->phpType($model->getKeyType());
@@ -267,6 +300,62 @@ final class TypesCommand extends Command
             'array', 'json', 'object' => 'unknown[] | Record<string, unknown>',
             default => 'unknown',
         };
+    }
+
+    private function inMemorySchemaConnection(): ?string
+    {
+        if ($this->inMemorySchemaAttempted) {
+            return $this->inMemorySchema;
+        }
+        $this->inMemorySchemaAttempted = true;
+
+        $migrationsPath = database_path('migrations');
+        if (! is_dir($migrationsPath)) {
+            return null;
+        }
+
+        $connection = 'rehearsal_types_schema';
+        $memoryConfig = [
+            'driver' => 'sqlite',
+            'database' => ':memory:',
+            'prefix' => '',
+            'foreign_key_constraints' => false,
+        ];
+        $originalConnections = config('database.connections', []);
+        $sandboxed = [$connection => $memoryConfig];
+        $sandboxedNames = [];
+        foreach (is_array($originalConnections) ? $originalConnections : [] as $name => $cfg) {
+            if (is_array($cfg) && ($cfg['driver'] ?? null) === 'sqlite' && ($cfg['database'] ?? null) === ':memory:') {
+                $sandboxed[$name] = $cfg;
+
+                continue;
+            }
+            $sandboxed[$name] = $memoryConfig;
+            $sandboxedNames[] = $name;
+            DB::purge($name);
+        }
+        config(['database.connections' => $sandboxed]);
+
+        try {
+            $exit = Artisan::call('migrate', [
+                '--database' => $connection,
+                '--force' => true,
+            ]);
+            if ($exit === 0) {
+                $this->inMemorySchema = $connection;
+            }
+        } catch (Throwable) {
+            return null;
+        } finally {
+            $restored = is_array($originalConnections) ? $originalConnections : [];
+            $restored[$connection] = $memoryConfig;
+            config(['database.connections' => $restored]);
+            foreach ($sandboxedNames as $name) {
+                DB::purge($name);
+            }
+        }
+
+        return $this->inMemorySchema;
     }
 
     private function columnType(string $type): string
