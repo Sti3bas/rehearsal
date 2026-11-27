@@ -96,7 +96,7 @@ final class Operations
             return false;
         }
         $type = $params[0]->getType();
-        $isArrayParam = $type === null || ($type instanceof ReflectionNamedType && in_array($type->getName(), ['array', 'iterable', 'mixed'], true));
+        $isArrayParam = $type === null || ($type instanceof ReflectionNamedType && in_array($type->getName(), ['array', 'iterable'], true));
         if (! $isArrayParam) {
             return false;
         }
