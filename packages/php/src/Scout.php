@@ -85,7 +85,7 @@ final class Scout implements Integration, ClientMetadata
                 }
             }
             if ($engine === 'typesense') {
-                $this->resetTypesense($attempt, $path, $state);
+                $this->resetTypesense($attempt, $path, $state, $originalPrefix);
             }
 
             return;
@@ -156,7 +156,7 @@ final class Scout implements Integration, ClientMetadata
         $state['key'] = ['id' => $key['uid'] ?? $key['id'], 'value' => $key['key'] ?? $key['value']];
         $this->write($path, $state);
         if ($engine === 'typesense') {
-            $this->resetTypesense($attempt, $path, $state);
+            $this->resetTypesense($attempt, $path, $state, $originalPrefix);
         }
     }
 
@@ -188,10 +188,11 @@ final class Scout implements Integration, ClientMetadata
         return $empty;
     }
 
-    private function resetTypesense(Attempt $attempt, string $path, array $state): void
+    private function resetTypesense(Attempt $attempt, string $path, array $state, string $originalPrefix): void
     {
+        $adminKey = $this->adminKey();
         $baseline = config('rehearsal.scout.baseline_models', []);
-        $models = $this->models($attempt, '');
+        $models = $this->models($attempt, $originalPrefix);
         if (! is_array($baseline) || array_diff($baseline, $models)) {
             throw new RuntimeException('Typesense baseline models must be included in the configured Scout models.');
         }
@@ -207,7 +208,7 @@ final class Scout implements Integration, ClientMetadata
                 $class::makeAllSearchable();
             }
         }
-        $key = $this->api()->post('/keys', [
+        $key = $this->api($adminKey)->post('/keys', [
             'description' => $this->prefix($attempt).$attempt->id,
             'actions' => ['documents:search'],
             'collections' => $state['indexes'],
@@ -248,11 +249,11 @@ final class Scout implements Integration, ClientMetadata
         }
     }
 
-    private function api(): PendingRequest
+    private function api(?string $adminKey = null): PendingRequest
     {
         $origin = $this->origin();
         LocalService::origin($origin);
-        $key = $this->adminKey();
+        $key = $adminKey ?? $this->adminKey();
         if (! is_string($key) || $key === '') {
             throw new RuntimeException('Rehearsal Scout requires a disposable service admin key.');
         }
