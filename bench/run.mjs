@@ -94,7 +94,7 @@ async function measureProvision() {
     ...integrations,
   };
   const artisan = async (command) => {
-    const child = spawn("php", ["artisan", command, "--env=playwright", "--no-interaction"], {
+    const child = spawn("php", ["artisan", command, "--env=rehearsal", "--no-interaction"], {
       cwd, env, stdio: ["ignore", logfile, logfile],
     });
     const [code] = await once(child, "exit");
@@ -111,7 +111,7 @@ async function measureProvision() {
 }
 
 try {
-  const args = ["artisan", "serve", "--env=playwright", "--host=127.0.0.1", "--port=" + port, "--no-reload", "--tries=1"];
+  const args = ["artisan", "serve", "--env=rehearsal", "--host=127.0.0.1", "--port=" + port, "--no-reload", "--tries=1"];
   const disabled = await withServer("php", args, { ...process.env, REHEARSAL_ENABLED: "false", PHP_CLI_SERVER_WORKERS: "8" },
     "/api/noop", async (startupMs) => ({ startupMs: Math.round(startupMs), request: await measureRequests() }));
   const enabled = await withServer(process.execPath, [launcher, String(port), "8", "artisan"], {

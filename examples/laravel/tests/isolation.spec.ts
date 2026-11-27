@@ -4,6 +4,11 @@ import { expect, test } from "@sti3bas/rehearsal";
 
 const collision = "same-address@example.test";
 
+test("uses the managed rehearsal environment and forwards Laravel env values", async ({ page }) => {
+  const response = await page.request.get("/probe/environment");
+  expect(await response.json()).toEqual({ environment: "rehearsal", name: "Managed Rehearsal" });
+});
+
 test("resolves configured belongs-to references in a factory batch", async ({ laravel }) => {
   const [category, users] = await laravel.factory([
     { model: "Category", attrs: { name: "Collectibles" } },

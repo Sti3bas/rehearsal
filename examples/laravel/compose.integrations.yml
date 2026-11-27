@@ -21,7 +21,7 @@ services:
     volumes: ["../..:/workspace:ro"]
     working_dir: /workspace/examples/laravel
     environment:
-      APP_ENV: playwright
+      APP_ENV: rehearsal
       REHEARSAL_REVERB_SERVER: "true"
       REVERB_SCALING_ENABLED: "${REVERB_SCALING_ENABLED:-false}"
       LOG_CHANNEL: stderr

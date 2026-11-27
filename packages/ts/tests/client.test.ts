@@ -38,8 +38,15 @@ describe("client", () => {
   });
 
   it("passes the selected Laravel environment and rejects invalid names", () => {
+    expect(laravelServer().env.REHEARSAL_MANAGED_APP_ENV).toBe("rehearsal");
     expect(laravelServer({ environment: "browser-tests" }).env.REHEARSAL_MANAGED_APP_ENV).toBe("browser-tests");
     expect(() => laravelServer({ environment: "../local" })).toThrow("Invalid Rehearsal environment name.");
+  });
+
+  it("passes only explicitly mapped variables through the launcher", () => {
+    const server = laravelServer({ env: { APP_NAME: "Browser tests", STRIPE_KEY: undefined } });
+    expect(JSON.parse(server.env.REHEARSAL_MANAGED_ENV)).toEqual({ APP_NAME: "Browser tests" });
+    expect(server.env).not.toHaveProperty("APP_NAME");
   });
 
   it("uses Typesense metadata under a custom integration name", () => {

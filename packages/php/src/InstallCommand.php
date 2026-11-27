@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 
 final class InstallCommand extends Command
 {
-    protected $signature = 'rehearsal:install {--environment=playwright}';
+    protected $signature = 'rehearsal:install {--environment=rehearsal}';
 
     protected $description = 'Create an independent Laravel environment for Rehearsal';
 
@@ -31,10 +31,10 @@ final class InstallCommand extends Command
 
         chmod($path, 0600);
         $key = base64_encode(random_bytes(32));
+        $allowlist = $environment === 'rehearsal' ? '' : "REHEARSAL_ENVIRONMENTS=$environment\n";
         $data = <<<ENV
 APP_ENV=$environment
-REHEARSAL_ENVIRONMENTS=$environment
-APP_KEY=base64:$key
+${allowlist}APP_KEY=base64:$key
 APP_DEBUG=false
 APP_URL=http://127.0.0.1:8100
 DB_CONNECTION=sqlite

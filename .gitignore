@@ -8,4 +8,5 @@ playwright-report/
 composer.lock
 .env
 .env.playwright
+.env.rehearsal
 .rehearsal/

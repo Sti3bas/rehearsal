@@ -16,6 +16,7 @@ Route::post('/login', function (Request $request) {
     return response()->noContent();
 });
 Route::get('/probe/redirect', fn () => redirect('/state'));
+Route::get('/probe/environment', fn () => ['environment' => app()->environment(), 'name' => config('app.name')]);
 Route::get('/probe/rate-limit', fn () => response()->noContent())->middleware('throttle:probe');
 Route::get('/probe/outside-db', fn () => ['configured' => config('database.connections.outside') !== null]);
 Route::get('/probe/moderation', function () {

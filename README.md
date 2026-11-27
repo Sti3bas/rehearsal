@@ -30,9 +30,13 @@ php artisan rehearsal:install
 npx playwright install chromium
 ```
 
-The installer writes `.env.playwright` without overwriting an existing file. Ignore `.env.playwright` and `.rehearsal/`. SQLite is the default. Keep Laravel's migrations for the database-backed sessions, cache, and queues you use (including the failed-jobs table for queue drains).
+The installer writes a disposable `.env.rehearsal` without overwriting an existing file. Ignore local env files containing secrets and `.rehearsal/`. SQLite is the default. Keep Laravel's migrations for the database-backed sessions, cache, and queues you use (including the failed-jobs table for queue drains).
 
-The PHP package allows only the `testing` environment by default. Set `rehearsal.environments` in your application's config or use the comma-separated `REHEARSAL_ENVIRONMENTS` variable. New installer-generated files opt in automatically; for an existing `.env.playwright`, add `REHEARSAL_ENVIRONMENTS=playwright` or configure the allowlist in your app. To use a different environment, run `php artisan rehearsal:install --environment=browser-tests` and set `laravelServer({ environment: "browser-tests" })`. The example app opts into `playwright` explicitly.
+No changes to `bootstrap/app.php` are needed. The launcher sets `APP_ENV=rehearsal` on every managed process, so Laravel loads `.env.rehearsal` instead of `.env`. Laravel selects one dotenv file; it doesn't fill missing keys from `.env`. The managed launcher requires the dedicated file so it cannot silently fall back to the application's normal environment file.
+
+Pass per-run settings or CI secrets as process environment overrides, for example `laravelServer({ env: { APP_KEY: process.env.E2E_APP_KEY } })`. Defined values in `env` take precedence over `.env.rehearsal`; unset values are omitted. The launcher does not automatically forward arbitrary parent variables, and it owns `APP_ENV`, `APP_URL`, and its isolation settings.
+
+The PHP package allows `testing` and `rehearsal` by default. To use another environment and its matching dotenv file, run `php artisan rehearsal:install --environment=browser-tests` and set `laravelServer({ environment: "browser-tests" })`. For an existing `.env.playwright`, use `environment: "playwright"` and keep `playwright` in the allowlist via `rehearsal.environments` or `REHEARSAL_ENVIRONMENTS`.
 
 To keep an app's existing config value instead of applying a Rehearsal default, set that dotted key to `null` in `rehearsal.safe_defaults`, for example `'safe_defaults' => ['cache.default' => null]`. Supported keys are `session.driver`, `cache.default`, `queue.default`, `mail.default`, `broadcasting.default`, `scout.driver`, and `app.debug`. Integrations still take ownership of their drivers when they bind an attempt: for example, set `'laravel-state' => false` in `rehearsal.integrations` if the app supplies its own session, cache, and queue isolation, or register a custom integration instead. Opt out only with disposable services or independently isolated state.
 
@@ -86,7 +90,7 @@ php artisan vendor:publish --tag=rehearsal-config
 
 #### Generate types from your Laravel app
 
-Run `php artisan rehearsal:types ../frontend/rehearsal.generated.d.ts --env=playwright` from the Laravel root, then include the resulting file in your Playwright TypeScript project. Use the environment that registers your fixtures and operations. For a Playwright global setup, import `generateRehearsalTypes` from `@sti3bas/rehearsal` and await `generateRehearsalTypes({ root: "../backend", path: "../frontend/rehearsal.generated.d.ts", environment: "playwright" })`; the output path is relative to the Laravel root. Generate before running a separate TypeScript check.
+Run `php artisan rehearsal:types ../frontend/rehearsal.generated.d.ts --env=rehearsal` from the Laravel root, then include the resulting file in your Playwright TypeScript project. Use the environment that registers your fixtures and operations. For a Playwright global setup, import `generateRehearsalTypes` from `@sti3bas/rehearsal` and await `generateRehearsalTypes({ root: "../backend", path: "../frontend/rehearsal.generated.d.ts", environment: "rehearsal" })`; the output path is relative to the Laravel root. Generate before running a separate TypeScript check.
 
 The declaration augments the Playwright fixture and the `Laravel` client. Without it, the client accepts string aliases and returns generic rows. With it, editors suggest the registered aliases and infer model and operation results:
 
@@ -218,7 +222,7 @@ The lifecycle is **provision → reset → bind requests → cleanup**. Rehearsa
 
 ### MySQL or PostgreSQL
 
-Set these in `.env.playwright` (or pass their values through `laravelServer({ database: { ... } })`):
+Set these in `.env.rehearsal` (or pass their values through `laravelServer({ database: { ... } })`):
 
 ```dotenv
 DB_CONNECTION=mysql
@@ -258,7 +262,7 @@ Add entries to the **existing** `integrations` array in the published config, ke
 
 - **Scout:** Custom search/index names must honor `scout.prefix`. For remote engines, list the searchable models and configure their schemas as you normally would. The database engine needs no search container or admin key.
 - **Mailpit:** The integration configures the default test mailer. Explicit app-specific mailers should never point at live SMTP during a test.
-- **Reverb:** Run a separate daemon from the same checkout with `APP_ENV=playwright REHEARSAL_REVERB_SERVER=true php artisan reverb:start --host=127.0.0.1 --port=18080`. Import `reverbTest as test` in browser specs and configure your Echo client with the `key`, `host`, and `port` from `globalThis.__REHEARSAL_REVERB__` before it starts. The publisher secret stays server-side.
+- **Reverb:** Run a separate daemon from the same checkout with `APP_ENV=rehearsal REHEARSAL_REVERB_SERVER=true php artisan reverb:start --host=127.0.0.1 --port=18080`. Import `reverbTest as test` in browser specs and configure your Echo client with the `key`, `host`, and `port` from `globalThis.__REHEARSAL_REVERB__` before it starts. The publisher secret stays server-side.
 
 **Typesense baselines and browser search.** Seed the database baseline as usual (for example, with `rehearsal.database.seeder`), put Scout after Database in `integrations`, and list the models to reimport under `scout.baseline_models`. Rehearsal imports those models from the restored slot DB with Scout on every attempt. Without that list, collections start empty. Define schemas under Laravel Scout's `scout.typesense.model-settings.<model>.collection-schema` or via `typesenseCollectionSchema()`. For schemas with `reference` fields, list the referenced models before their dependents in `models`; Rehearsal retargets those references to the slot's collections.
 
@@ -331,7 +335,7 @@ use Illuminate\Support\Facades\Storage;
 use Sti3bas\Rehearsal\Operations;
 
 // In a service provider's boot() method:
-if ($this->app->environment('playwright')) {
+if ($this->app->environment('rehearsal')) {
     $this->app->make(Operations::class)->register(
         'reports.stage',
         ['title' => ['required', 'string', 'max:100']],

@@ -10,14 +10,14 @@ const root = process.cwd();
 const port = Number(process.argv[2]);
 const workers = Number(process.argv[3]);
 const host = process.argv[5] ?? "127.0.0.1";
-const environment = process.env.REHEARSAL_MANAGED_APP_ENV ?? "playwright";
+const environment = process.env.REHEARSAL_MANAGED_APP_ENV ?? "rehearsal";
 if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(environment)) throw new Error("Invalid Rehearsal environment name.");
 const run = randomBytes(12).toString("hex");
 const capability = randomBytes(32).toString("hex");
 const launchPath = privateLaunchPath(root, port);
 const runPath = join(root, ".rehearsal", "runs", run);
 
-const env: NodeJS.ProcessEnv = {};
+const env: NodeJS.ProcessEnv = Object.create(null);
 for (const key of ["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "TZ", "PHP_INI_SCAN_DIR", "LD_LIBRARY_PATH"]) {
   if (process.env[key] !== undefined) env[key] = process.env[key];
 }
@@ -30,7 +30,7 @@ for (const [key, value] of Object.entries(process.env)) {
     env[key.slice("REHEARSAL_MANAGED_".length)] = value;
   }
 }
-Object.assign(env, {
+Object.assign(env, JSON.parse(process.env.REHEARSAL_MANAGED_ENV ?? "{}"), {
   APP_ENV: environment,
   APP_URL: "http://" + host + ":" + port,
   APP_CONFIG_CACHE: join(runPath, "config.php"),
