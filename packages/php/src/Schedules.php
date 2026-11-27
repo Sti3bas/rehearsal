@@ -188,12 +188,6 @@ final class Schedules
             return;
         }
 
-        if (array_key_exists($key, $fixed)) {
-            $fixed[$key] = is_array($fixed[$key]) ? [...$fixed[$key], $value] : [$fixed[$key], $value];
-
-            return;
-        }
-
         $fixed[$key] = $value;
     }
 

@@ -103,10 +103,12 @@ final class Operations
     private function discover(array $paths): array
     {
         $entries = [];
+        $seen = [];
         foreach ($this->classes($paths) as $class) {
-            if (! class_exists($class)) {
+            if (isset($seen[$class]) || ! class_exists($class)) {
                 continue;
             }
+            $seen[$class] = true;
             $reflection = new ReflectionClass($class);
             if (! $reflection->isInstantiable() || ! $reflection->hasMethod('__invoke')) {
                 continue;
