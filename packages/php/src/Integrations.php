@@ -11,6 +11,11 @@ use RuntimeException;
 
 final class Integrations
 {
+    private ?string $cachedKey = null;
+
+    /** @var array<string, class-string<Integration>>|null */
+    private ?array $cachedClasses = null;
+
     public function __construct(private Container $container) {}
 
     /** @return array<string, class-string<Integration>> */
@@ -19,6 +24,16 @@ final class Integrations
         $configured = config('rehearsal.integrations', []);
         if (! is_array($configured)) {
             return [];
+        }
+
+        $cacheKey = serialize([
+            $configured,
+            config('rehearsal.mailpit.api'),
+            config('rehearsal.reverb.origin'),
+            config('rehearsal.scout.engine'),
+        ]);
+        if ($this->cachedKey === $cacheKey && $this->cachedClasses !== null) {
+            return $this->cachedClasses;
         }
 
         $discover = is_bool($configured['discover'] ?? null) ? $configured['discover'] : false;
@@ -56,6 +71,9 @@ final class Integrations
             }
         }
 
+        $this->cachedKey = $cacheKey;
+        $this->cachedClasses = $resolved;
+
         return $resolved;
     }
 
@@ -84,12 +102,10 @@ final class Integrations
     private function builtInDiscovered(): array
     {
         $discovered = [];
-        $mailpit = config('rehearsal.mailpit.api');
-        if (is_string($mailpit) && $mailpit !== '') {
+        if (LocalService::isOrigin(config('rehearsal.mailpit.api'))) {
             $discovered['mailpit'] = Mailpit::class;
         }
-        $reverb = config('rehearsal.reverb.origin');
-        if (is_string($reverb) && $reverb !== '') {
+        if (LocalService::isOrigin(config('rehearsal.reverb.origin'))) {
             $discovered['reverb'] = Reverb::class;
         }
         $scoutEngine = config('rehearsal.scout.engine');
