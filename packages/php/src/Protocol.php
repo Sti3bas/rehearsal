@@ -33,6 +33,7 @@ final readonly class Protocol
                 $integration->provision($this->run);
             }
 
+            $this->write(Factories::SNAPSHOT, json_encode(app(Factories::class)->discover(), JSON_THROW_ON_ERROR));
             $this->write('ready', (string) self::VERSION);
         });
     }

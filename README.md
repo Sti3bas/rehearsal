@@ -82,15 +82,23 @@ php artisan vendor:publish --tag=rehearsal-config
 
 | Call | What it does |
 | --- | --- |
-| `laravel.factory("User", attrs, { states, count })` | Creates a model or a batch. The model and state aliases must be registered in config. Pass an array of definitions to batch several factories into one call. |
+| `laravel.factory("User", attrs, { states, count })` | Creates a model or a batch. Model aliases are discovered automatically; register any states you want to call. Pass an array of definitions to batch several factories into one call. |
 | `laravel.login({ id }, context?)` | Logs in the current browser context through the configured guard. Pass another browser context to bind it to the same attempt and log it in separately. Opt in with `'login' => ['guard' => 'web']`. |
 | `laravel.travel("2034-01-02T12:00:00.000Z")` | Sets Laravel's test clock and the fixed time on pages managed by the fixture. |
 | `laravel.artisan("about", {})` | Runs a configured alias, never an arbitrary Artisan command. |
 | `laravel.operation("reports.stage", input)` | Calls a named, validated application operation. |
 
+#### Factory discovery
+
+Rehearsal discovers autoloadable Eloquent models in `app/Models` using Laravel's factory resolution, and looks for standalone Eloquent factories in `database/factories`. Use the exact model basename (for example, `User`). If two models share a basename, define explicit aliases instead. A model's own factory hook takes precedence over a discovered standalone factory. An explicit `factory` class in config overrides both and uses the configured model unless the factory declares a model itself.
+
+Set `factories.model_paths` or `factories.factory_paths` in `config/rehearsal.php` to replace either list of scan directories. Paths can be absolute or relative to the Laravel root. Entries under `factories` can add aliases, override a discovered model, or supply only metadata such as `states`, `relations`, or `types` for an existing alias. Set `factories.discover` to `false` to use only explicitly configured factories.
+
+Managed runs discover factories once at startup and reuse that list across requests. Restart the run to pick up new factories. Type generation discovers factories independently. Discovery does not instantiate factories or call model factory hooks. If a standalone factory depends on a custom model-name resolver, declare its model with `#[UseModel]` or a default `$model` property, or register it explicitly. The factory operation still requires the managed, test-only control plane.
+
 #### Generate types from your Laravel app
 
-Run `php artisan rehearsal:types ../frontend/rehearsal.generated.d.ts --env=rehearsal` from the Laravel root, then include the resulting file in your Playwright TypeScript project. Use the environment that registers your fixtures and operations. For a Playwright global setup, import `generateRehearsalTypes` from `@sti3bas/rehearsal` and await `generateRehearsalTypes({ root: "../backend", path: "../frontend/rehearsal.generated.d.ts", environment: "rehearsal" })`; the output path is relative to the Laravel root. Generate before running a separate TypeScript check.
+Run `php artisan rehearsal:types ../frontend/rehearsal.generated.d.ts --env=rehearsal` from the Laravel root, then include the resulting file in your Playwright TypeScript project. Discovered and explicitly configured factories are both included. Use the environment that registers your fixtures and operations. For a Playwright global setup, import `generateRehearsalTypes` from `@sti3bas/rehearsal` and await `generateRehearsalTypes({ root: "../backend", path: "../frontend/rehearsal.generated.d.ts", environment: "rehearsal" })`; the output path is relative to the Laravel root. Generate before running a separate TypeScript check.
 
 The declaration augments the Playwright fixture and the `Laravel` client. Without it, the client accepts string aliases and returns generic rows. With it, editors suggest the registered aliases and infer model and operation results:
 

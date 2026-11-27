@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Sti3bas\Rehearsal;
 
+use Closure;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Http\JsonResponse;
@@ -13,10 +15,11 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use ReflectionProperty;
 
 final readonly class Control
 {
-    public function __construct(private Protocol $protocol, private Operations $operations) {}
+    public function __construct(private Protocol $protocol, private Operations $operations, private Factories $factories) {}
 
     public function ready(): JsonResponse
     {
@@ -79,7 +82,7 @@ final readonly class Control
 
     private function factory(array $input): array
     {
-        $factories = config('rehearsal.factories');
+        $factories = $this->factories->all($this->protocol->run);
         $data = Validator::validate($input, [
             'items' => 'required|array|list|min:1|max:100',
             'items.*' => 'required|array:model,attrs,states,count,refs',
@@ -95,35 +98,69 @@ final readonly class Control
 
         return DB::transaction(function () use ($data, $factories): array {
             $results = [];
+            $configured = config('rehearsal.factories');
             foreach ($data['items'] as $item) {
                 $definition = $factories[$item['model']];
-                $model = $definition['model'];
-                abort_unless(is_subclass_of($model, Model::class) && is_callable([$model, 'factory']), 422);
-                $factory = $model::factory();
-                foreach ($item['states'] ?? [] as $state) {
-                    $method = $definition['states'][$state] ?? null;
-                    abort_unless(is_string($method), 422, 'Factory state is not registered.');
-                    $factory = $factory->{$method}();
+                $model = $definition['model'] ?? '';
+                abort_unless(is_subclass_of($model, Model::class), 422);
+                if (isset($definition['factory'])) {
+                    $class = $definition['factory'];
+                    abort_unless(is_subclass_of($class, Factory::class), 422);
+                    $factory = $class::new();
+                } else {
+                    abort_unless(is_callable([$model, 'factory']), 422);
+                    $factory = $model::factory();
                 }
-                if (isset($item['count'])) {
-                    $factory = $factory->count((int) $item['count']);
-                }
-                $attributes = $item['attrs'] ?? [];
-                foreach ($item['refs'] ?? [] as $name => $index) {
-                    $target = $definition['relations'][$name] ?? null;
-                    $related = $results[$index] ?? null;
-                    abort_unless($target !== null && $related instanceof Model
-                        && $data['items'][$index]['model'] === $target, 422, 'Invalid factory relation reference.');
-                    $relation = (new $model)->{$name}();
-                    abort_unless($relation instanceof BelongsTo && is_a($related, $relation->getRelated()::class),
-                        422, 'Factory relation must be a configured belongs-to relation.');
-                    $attributes[$relation->getForeignKeyName()] = $related->getAttribute($relation->getOwnerKeyName());
-                }
-                $results[] = $factory->create($attributes);
+                $create = function () use ($factory, $model, $item, $definition, $results, $data) {
+                    foreach ($item['states'] ?? [] as $state) {
+                        $method = $definition['states'][$state] ?? null;
+                        abort_unless(is_string($method), 422, 'Factory state is not registered.');
+                        $factory = $factory->{$method}();
+                    }
+                    if (isset($item['count'])) {
+                        $factory = $factory->count((int) $item['count']);
+                    }
+                    $attributes = $item['attrs'] ?? [];
+                    foreach ($item['refs'] ?? [] as $name => $index) {
+                        $target = $definition['relations'][$name] ?? null;
+                        $related = $results[$index] ?? null;
+                        abort_unless($target !== null && $related instanceof Model
+                            && $data['items'][$index]['model'] === $target, 422, 'Invalid factory relation reference.');
+                        $relation = (new $model)->{$name}();
+                        abort_unless($relation instanceof BelongsTo && is_a($related, $relation->getRelated()::class),
+                            422, 'Factory relation must be a configured belongs-to relation.');
+                        $attributes[$relation->getForeignKeyName()] = $related->getAttribute($relation->getOwnerKeyName());
+                    }
+
+                    return $factory->create($attributes);
+                };
+                $results[] = isset($configured[$item['model']]['factory'])
+                    ? $this->withFactoryModel($factory, $model, $create)
+                    : $create();
             }
 
             return $results;
         });
+    }
+
+    private function withFactoryModel(Factory $factory, string $model, Closure $create): mixed
+    {
+        $class = $factory::class;
+        $property = new ReflectionProperty($class, 'modelNameResolvers');
+        $previous = $property->getValue()[$class] ?? null;
+        try {
+            $factory->guessModelNamesUsing(static fn () => $model);
+
+            return $create();
+        } finally {
+            $resolvers = $property->getValue();
+            if ($previous === null) {
+                unset($resolvers[$class]);
+            } else {
+                $resolvers[$class] = $previous;
+            }
+            $property->setValue(null, $resolvers);
+        }
     }
 
     private function travel(Attempt $attempt, array $input): string
