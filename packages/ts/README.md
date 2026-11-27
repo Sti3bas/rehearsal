@@ -4,7 +4,13 @@
 
 `@sti3bas/rehearsal` supplies `laravelServer()`, native Playwright fixtures for Laravel factories, login, and time travel, and optional Reverb, SSR, and reset timing helpers. It works with the `sti3bas/rehearsal` Composer package on Laravel 13.
 
-The packages are not published yet. See the [project README](https://github.com/Sti3bas/rehearsal#readme) for requirements, the starter, and the complete quickstart.
+Install from [npm](https://www.npmjs.com/package/@sti3bas/rehearsal):
+
+```sh
+npm install -D @sti3bas/rehearsal @playwright/test
+```
+
+See the [project README](https://github.com/Sti3bas/rehearsal#readme) for the complete quickstart, including the [Packagist package](https://packagist.org/packages/sti3bas/rehearsal).
 
 On Nuxt 4, add `modules: ["@sti3bas/rehearsal/nuxt"]` to `nuxt.config.ts` and pass `$fetch: useRehearsalFetch()` to Laravel-facing `useFetch` calls. Enable forwarding only in the test server with `NUXT_REHEARSAL_ENABLED=true`. See the [Nuxt setup](https://github.com/Sti3bas/rehearsal#nuxt-4) for the defaults and overrides.
 
