@@ -4,6 +4,11 @@ import { expect, nuxtTest, passthrough, test } from "@sti3bas/rehearsal";
 const nuxt = mergeTests(test, nuxtTest);
 nuxt.use({ nuxtURL: "http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT });
 
+nuxt("matches Nuxt fake root URLs without a trailing slash", async ({ nuxt, page, baseURL }) => {
+  await nuxt.fake({ [`GET ${baseURL}`]: { body: "Fake root" } });
+  expect(await (await page.goto(baseURL!))?.text()).toBe("Fake root");
+});
+
 nuxt("keeps fakes on a same-origin Nuxt redirect", async ({ nuxt, page, baseURL, nuxtURL }) => {
   await nuxt.fake({ [`GET ${baseURL}/state`]: { json: { users: ["Redirected"] } } });
   const response = await page.goto(nuxtURL + "/api/fake-redirect");

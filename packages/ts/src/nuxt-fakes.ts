@@ -50,7 +50,8 @@ export class NuxtFakes {
   private rule(key: string, response: NuxtFakeRule): Rule {
     const match = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) (https?:\/\/[^\s]+)$/.exec(key);
     if (!match) throw new Error('Rehearsal Nuxt fakes require a method and absolute URL, such as "GET https://example.test/feed".');
-    const [, method, url] = match;
+    const [, method, rawUrl] = match;
+    const url = rawUrl.replace(/^(https?:\/\/[^/?#]+)(?=[?#]|$)/, "$1/");
     const pattern = url.split(/(\*)/).map((part) => part === "*" ? ".*" : part.replace(/[|\\{}()[\]^$+?.]/g, "\\$&")).join("");
     let calls = 0;
     const sequence: readonly NuxtFakeResponse[] = typeof response === "function" ? [] :
