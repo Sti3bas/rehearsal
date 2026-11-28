@@ -17,6 +17,7 @@ export type FakeHandler = (request: Request) => unknown | Promise<unknown>;
 export class FakeBridge {
   private token = randomBytes(32).toString("hex");
   private handlers = new Map<string, FakeHandler>();
+  private active = new Set<Promise<unknown>>();
   private server?: Server;
   private ready?: Promise<number>;
 
@@ -39,7 +40,10 @@ export class FakeBridge {
     this.clear();
     if (!this.server) return;
     this.server.closeAllConnections();
-    await new Promise<void>((resolve) => this.server!.close(() => resolve()));
+    await Promise.all([
+      new Promise<void>((resolve) => this.server!.close(() => resolve())),
+      Promise.allSettled(this.active),
+    ]);
   }
 
   private listen() {
@@ -67,7 +71,9 @@ export class FakeBridge {
             return;
           }
           const request = new Request(url, { method, headers, body: body === undefined ? undefined : Buffer.from(body, "base64") });
-          const value = await handler(request);
+          const handlerResult = Promise.resolve().then(() => handler(request));
+          this.active.add(handlerResult);
+          const value = await handlerResult.finally(() => this.active.delete(handlerResult));
           const json = JSON.stringify(value ?? null);
           if (Buffer.byteLength(json) > 2_000_000) {
             outgoing.writeHead(413).end();

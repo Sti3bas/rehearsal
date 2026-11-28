@@ -42,6 +42,34 @@ describe("client", () => {
     await expect(client.disposeFakes()).rejects.toBe(error);
   });
 
+  it("waits for a disconnected Laravel callback before checking teardown errors", async () => {
+    const post = vi.fn().mockResolvedValue({ ok: () => true, json: async () => ({ data: null }) });
+    const client = new Laravel("http://127.0.0.1:8100", { post } as unknown as APIRequestContext, "cap", "attempt");
+    const error = new Error("late callback assertion");
+    let started!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>((resolve) => { started = resolve; });
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    await client.fake("GET /state", async () => {
+      started();
+      await blocked;
+      throw error;
+    });
+    const { port, token, id } = post.mock.calls[0][1].data.data.callback;
+    const controller = new AbortController();
+    const pending = fetch(`http://127.0.0.1:${port}/_rehearsal/fake`, {
+      method: "POST", headers: { "x-rehearsal-fake": token }, signal: controller.signal,
+      body: JSON.stringify({ id, url: "http://127.0.0.1:8100/state", method: "GET", headers: [] }),
+    }).catch(() => {});
+    await entered;
+    controller.abort();
+    await pending;
+    const teardown = expect(client.disposeFakes()).rejects.toBe(error);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    release();
+    await teardown;
+  });
+
   it("starts a slot with a capability, then batches factory items once in order", async () => {
     const post = vi.fn()
       .mockResolvedValueOnce({ ok: () => true, json: async () => ({ marker: "attempt", resetMs: {} }) })
