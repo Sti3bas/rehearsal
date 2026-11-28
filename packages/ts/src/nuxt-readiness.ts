@@ -8,7 +8,10 @@ export function nuxtRelayStatus(enabled: unknown, handler: unknown): NuxtRelaySt
 }
 
 export async function checkNuxtRelay(frontend: URL, fetcher = fetch) {
-  const url = new URL(nuxtReadyPath, frontend);
+  const url = new URL(frontend);
+  url.pathname = frontend.pathname.replace(/\/+$/, "") + nuxtReadyPath;
+  url.search = "";
+  url.hash = "";
   const response = await fetcher(url, { redirect: "manual", signal: AbortSignal.timeout(5_000) }).catch((cause) => {
     throw new Error(`Could not reach the Rehearsal Nuxt SSR readiness endpoint at ${url}. Check that the Nuxt webServer and nuxtURL/baseURL point to the same server.`, { cause });
   });

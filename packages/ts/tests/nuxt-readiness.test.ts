@@ -18,4 +18,13 @@ describe("Nuxt SSR readiness", () => {
     await expect(checkNuxtRelay(frontend, vi.fn(async () => Response.json({ rehearsalNuxt: "unsupported" })))).rejects.toThrow("Nitro 2");
     await expect(checkNuxtRelay(frontend, vi.fn(async () => new Response("<html>SPA fallback</html>")))).rejects.toThrow('Add "@sti3bas/rehearsal/nuxt"');
   });
+
+  it.each(["/store", "/store/", "/store/?ignored=1#fragment"])("probes under the configured Nuxt base %s", async (base) => {
+    const endpoint = new URL("/store/_rehearsal/nuxt/ready", frontend);
+    const fetcher = vi.fn(async (url: URL) =>
+      url.href === endpoint.href ? Response.json({ rehearsalNuxt: "ready" }) : new Response(null, { status: 404 }));
+
+    await expect(checkNuxtRelay(new URL(base, frontend), fetcher)).resolves.toBeUndefined();
+    expect(fetcher).toHaveBeenCalledWith(endpoint, expect.objectContaining({ redirect: "manual" }));
+  });
 });
