@@ -1,11 +1,11 @@
 import { ofetch } from "ofetch";
 
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
   const baseURL = useRuntimeConfig().rehearsal.laravelOrigin;
   const [global, imported, redirect] = await Promise.all([
     $fetch("/state", { baseURL }),
     ofetch("/state", { baseURL }),
     ofetch.raw("/probe/redirect", { baseURL }),
   ]);
-  return { global, imported, redirect: redirect.status };
+  return { global, imported, redirect: redirect.status, proxyHeader: getRequestHeader(event, "x-rehearsal-fake") ?? null };
 });

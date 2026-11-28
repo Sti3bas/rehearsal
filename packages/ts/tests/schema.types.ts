@@ -1,5 +1,17 @@
-import { test, type FactoryModel, type FactoryModelRef, type ModelResult } from "@sti3bas/rehearsal";
+import { nuxtTest, passthrough, test, type FactoryModel, type FactoryModelRef, type ModelResult, type NuxtFakeRule } from "@sti3bas/rehearsal";
 import { expectTypeOf } from "vitest";
+
+nuxtTest("types Nuxt fake patterns and callbacks", async ({ nuxt }) => {
+  const fake: NuxtFakeRule<{ id: number }> = (request) => {
+    expectTypeOf(request).toEqualTypeOf<Request>();
+    return request.headers.has("x-real") ? passthrough : { json: { id: 42 } };
+  };
+  await nuxt.fake({ "GET https://example.test/api/*": fake });
+  // @ts-expect-error Nuxt fake patterns require an HTTP method and an absolute URL
+  await nuxt.fake({ "GET /api/feed": fake });
+  // @ts-expect-error Nuxt fake patterns require a supported method
+  await nuxt.fake({ "FETCH https://example.test/api/feed": fake });
+});
 
 declare module "@sti3bas/rehearsal" {
   interface RehearsalSchema {

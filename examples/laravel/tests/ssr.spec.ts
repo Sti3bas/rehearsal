@@ -1,4 +1,69 @@
-import { expect, test } from "@sti3bas/rehearsal";
+import { mergeTests } from "@playwright/test";
+import { expect, nuxtTest, passthrough, test } from "@sti3bas/rehearsal";
+
+const nuxt = mergeTests(test, nuxtTest);
+nuxt.use({ nuxtURL: "http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT });
+
+nuxt("matches Nuxt fake root URLs without a trailing slash", async ({ nuxt, page, baseURL }) => {
+  await nuxt.fake({ [`GET ${baseURL}`]: { body: "Fake root" } });
+  expect(await (await page.request.get(baseURL!)).text()).toBe("Rehearsal");
+  expect(await (await page.goto(baseURL!))?.text()).toBe("Fake root");
+  await nuxt.fake({ [`GET ${baseURL}*`]: { body: "Fake wildcard" } });
+  expect(await (await page.goto(baseURL! + "/state"))?.text()).toBe("Fake wildcard");
+  await nuxt.fake({ "GET https://*.example.test": { body: "Fake wildcard host" } });
+  expect(await (await page.goto("https://shop.example.test/"))?.text()).toBe("Fake wildcard host");
+});
+
+nuxt("leaves Nuxt redirects to the browser and fakes direct navigations", async ({ nuxt, page, baseURL, nuxtURL }) => {
+  await nuxt.fake({ [`GET ${baseURL}/state`]: { json: { users: ["Redirected"] } } });
+  const response = await page.goto(nuxtURL + "/api/fake-redirect", { waitUntil: "commit" });
+  expect(page.url()).toBe(nuxtURL + "/api/state");
+  expect(response!.request().redirectedFrom()?.url()).toBe(nuxtURL + "/api/fake-redirect");
+  expect((await response!.json()).global.users).toEqual(["Baseline"]);
+  expect((await (await page.goto(nuxtURL + "/api/state"))!.json()).global.users).toEqual(["Redirected"]);
+});
+
+nuxt("forwards an SSR replacement body to the real destination on a fake miss", async ({ nuxt, page, baseURL, nuxtURL }) => {
+  await nuxt.fake({ [`GET ${baseURL}/state`]: { json: { users: ["Unrelated"] } } });
+  expect(await (await page.goto(nuxtURL + "/api/fake-echo"))?.json()).toEqual({ body: "replacement" });
+});
+
+for (const name of ["Ada", "Grace"]) {
+  nuxt("shares runtime Nuxt fake handlers between SSR and the browser for " + name, async ({ nuxt, page, baseURL, nuxtURL }) => {
+    let hits = 0;
+    await nuxt.fake({
+      [`GET ${baseURL}/state`]: (request) => {
+        if (new URL(request.url).searchParams.has("real")) return passthrough;
+        return {
+          headers: { "access-control-allow-origin": "*" },
+          json: { users: [name], hit: ++hits },
+        };
+      },
+    });
+    const response = await page.goto(nuxtURL + "/api/state");
+    expect(response?.ok()).toBe(true);
+    const { global, imported, redirect, proxyHeader } = await response!.json();
+    expect([global.hit, imported.hit].sort()).toEqual([1, 2]);
+    expect(global.users).toEqual([name]);
+    expect(imported.users).toEqual([name]);
+    expect(redirect).toBe(302);
+    expect(proxyHeader).toBeNull();
+    const state = () => page.evaluate(async (url) => (await fetch(url)).json(), baseURL + "/state");
+    expect(await state()).toEqual({ users: [name], hit: 3 });
+    await nuxt.fake({
+      [`GET ${baseURL}/state`]: [
+        { headers: { "access-control-allow-origin": "*" }, json: { users: ["first"] } },
+        { headers: { "access-control-allow-origin": "*" }, json: { users: ["second"] } },
+      ],
+    });
+    expect(await state()).toEqual({ users: ["first"] });
+    const sequence = await (await page.goto(nuxtURL + "/api/state"))!.json();
+    expect(sequence.global.users).toEqual(["second"]);
+    expect(sequence.imported.users).toEqual(["second"]);
+    await nuxt.fake({ [`GET ${baseURL}/state`]: passthrough });
+    expect((await (await page.goto(nuxtURL + "/api/state"))!.json()).global.users).toEqual(["Baseline"]);
+  });
+}
 
 for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
   test("authenticates Sanctum from Nuxt and renders " + name + " on the server", async ({ laravel, page, baseURL, request }) => {

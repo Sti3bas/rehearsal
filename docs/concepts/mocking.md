@@ -19,6 +19,32 @@ await laravel.clearRouteMocks();
 
 Pass a URL at the Laravel origin, a path (with `*` for a segment or `**` across segments), or a Wayfinder object or route function and its parameters. Wayfinder objects also match the HTTP method. Supports JSON, text bodies, headers, status, delays (milliseconds), aborts and network errors. If a pattern includes a query string it is matched; otherwise queries are ignored. Newest matching registration wins; `once` or `times` counts claims across the browser and SSR, including across browser contexts bound to the same attempt. Once exhausted, the next matching rule or the real route takes over. The Nuxt module uses MSW for fetches using `useRehearsalFetch()` in forwarding mode. Browser routes apply only to Playwright contexts bound to the attempt and HTTP requests to Laravel, not third-party assets.
 
+### Nuxt browser and SSR fakes
+
+Install the `@sti3bas/rehearsal/nuxt` module and run Nuxt bound to loopback with `NUXT_REHEARSAL_ENABLED=true` in your test environment only. Use `nuxtTest` with a loopback `baseURL`, or set `nuxtURL` if `baseURL` points at Laravel. To use both fixtures, compose them with Playwright's `mergeTests(test, nuxtTest)`.
+
+```ts
+import { nuxtTest as test, passthrough } from "@sti3bas/rehearsal";
+
+test("renders a live fake during SSR", async ({ nuxt, page }) => {
+  let failing = true;
+  await nuxt.fake({
+    "GET https://search.example.test/collections/*": (request) =>
+      failing && !new URL(request.url).searchParams.has("retry")
+        ? { status: 500, json: { message: "outage" } }
+        : passthrough,
+  });
+  await page.goto("/");
+  failing = false;
+});
+```
+
+Keys are HTTP methods plus absolute URLs. A `*` matches any string; the query is matched only if the pattern includes one. Give each rule a response, an array of responses (the last repeats), or a sync/async callback taking a standard `Request`. The callback can return `passthrough` to let the real request run. Newer rules win, and the browser and Nitro both consume the same sequence. Use `NuxtFakeRule<YourJsonType>` to constrain the response body for an external API. No MSW API is needed.
+
+Fakes belong to the fixture's Playwright page and SSR requests made by that page. `page.request`, `context.request`, and standalone `APIRequestContext` requests bypass Playwright page routing, so they do not get these fakes or transmit the SSR context. For SSR, a test-only header identifies the worker's loopback handler; Nitro removes it before calling application code, and never forwards it to the original destination. Rules are cleared between tests or manually with `nuxt.clearFakes()`. This proxy-back uses standard server-side fetch on Node/Nitro 2; requests made outside the browser's test context run normally.
+
+Playwright page routing handles only the first request in a browser redirect chain. To test SSR fakes on a redirect destination, navigate directly to that URL; if the request reaches Laravel, a Laravel route fake also works across redirects.
+
 `pause()` lets matched requests continue to Laravel after `release()`; with a response it returns that response instead. `waitForRequest({ timeout: 5000 })` waits until the first match (five seconds by default). Clearing a mock removes future matches, but does not release requests already waiting on its gate.
 
 Set `rehearsal.route_mocks` to `false` to disable browser and SSR response mocks and their resolution route. The browser login route is only installed when login is configured, and the Typesense credential route is only installed when the Scout integration is configured for Typesense.
