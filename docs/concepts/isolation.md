@@ -14,7 +14,7 @@ Database and filesystem changes made by one attempt are not a setup mechanism fo
 
 Rehearsal is **test-only**. The bridge activates only in an allowlisted environment with valid managed run settings, and the managed launcher listens on loopback. Keep it off public networks and use disposable databases and service credentials. Never publish the launch record or your test environment file.
 
-The browser's signed, HTTP-only cookie routes ordinary app requests to the test attempt. Cookies do not distinguish ports, so run only trusted loopback services on that host. The separate control capability is not sent in browser navigation or forwarded by SSR. Rehearsal does not expose arbitrary PHP, SQL, shell commands,. Artisan discovery allows registered commands; [disable it and register explicit aliases](../guide/extending#restrict-artisan-and-scheduled-work) when tests need only a small set.
+The browser's signed, HTTP-only cookie routes ordinary app requests to the test attempt. Cookies do not distinguish ports, so run only trusted loopback services on that host. The separate control capability is not sent in browser navigation or forwarded by SSR. Rehearsal does not expose arbitrary PHP, SQL, or shell commands. Artisan discovery allows registered commands; [disable it and register explicit aliases](../guide/extending#restrict-artisan-and-scheduled-work) when tests need only a small set.
 
 ## Browser sessions and time
 

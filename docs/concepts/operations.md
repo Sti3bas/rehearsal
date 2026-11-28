@@ -38,7 +38,7 @@ const result = await laravel.call("users.read", { id: user.id });
 expect(result.name).toBe("Ada");
 ```
 
-Without a generated definition, use `laravel.operation<{ id: number; name: string }>("users.read", { id })` for a manually typed result. Neither TypeScript form replaces the PHP validator.
+Without a generated definition, use `laravel.operation<{ id: number; name: string }>("users.read", { id })` for a manually typed result. Neither TypeScript form replaces the PHP validator. Rehearsal rejects unregistered names; keep fixture setup in named handlers that call your application's own services rather than adding a generic command endpoint.
 
 ## Argument binding
 

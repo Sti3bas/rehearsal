@@ -15,7 +15,7 @@ The defaults work without a published config. To customize them, run `php artisa
 | `fault_paths` | `['discover' => true]` | Accepts application paths by default, excluding control endpoints. Use `false` to disable or an exact path list such as `['/api/feed']` to restrict. |
 | `login` | `true` | Enables the login helper. Use `['guard' => 'web']` to select a guard, or `false` to disable. With no explicit guard, the helper uses the default stateful guard or falls back to `web` when configured. |
 
-With an active run, Rehearsal starts with `session.driver=array`, `cache.default=array`, `queue.default=null` (the null driver), `mail.default=log`, `broadcasting.default=log`, `scout.driver=null` (the null driver), and `app.debug=false`. Integrations can still replace these as they bind an attempt. For example, Laravel State binds sessions, cache, and queues to the attempt database. An explicit `cache.limiter` store is not replaced.
+With an active run, Rehearsal starts with `session.driver=array`, `cache.default=array`, `queue.default=null` (the null driver), `mail.default=log`, `broadcasting.default=log`, `scout.driver=null` (the null driver), and `app.debug=false`. Integrations can still replace these as they bind an attempt. For example, Laravel State binds sessions, cache, queues, and rate-limit counters to the attempt database, including when an app registers named limiters at boot. An explicit `cache.limiter` store is not replaced; isolate it separately if needed.
 
 ```php
 'safe_defaults' => ['app.debug' => true, 'mail.default' => null],
