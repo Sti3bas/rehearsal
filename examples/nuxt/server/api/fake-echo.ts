@@ -1,7 +1,6 @@
 export default defineEventHandler(async (event) => {
-  if (event.method === "POST") return { body: await readRawBody(event) };
-
-  const request = new Request(getRequestURL(event), { method: "POST", body: "original" });
+  const origin = useRuntimeConfig(event).rehearsal.laravelOrigin;
+  const request = new Request(new URL("/api/probe/echo", origin), { method: "POST", body: "original" });
   await request.text();
   const result = await fetch(request, { body: "replacement" });
 
