@@ -19,7 +19,13 @@ describe("Nuxt SSR readiness", () => {
     await expect(checkNuxtRelay(frontend, vi.fn(async () => new Response("<html>SPA fallback</html>")))).rejects.toThrow('Add "@sti3bas/rehearsal/nuxt"');
   });
 
-  it.each(["/store", "/store/", "/store/?ignored=1#fragment"])("probes under the configured Nuxt base %s", async (base) => {
+  it("tries the root mount first even when the configured URL points to a page", async () => {
+    const fetcher = vi.fn(async () => Response.json({ rehearsalNuxt: "ready" }));
+    await checkNuxtRelay(new URL("/en/home", frontend), fetcher);
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith(new URL("/_rehearsal/nuxt/ready", frontend), expect.anything());
+  });
+
+  it.each(["/store", "/store/", "/store/?ignored=1#fragment", "/store/en/home"])("finds a Nuxt mount under %s", async (base) => {
     const endpoint = new URL("/store/_rehearsal/nuxt/ready", frontend);
     const fetcher = vi.fn(async (url: URL) =>
       url.href === endpoint.href ? Response.json({ rehearsalNuxt: "ready" }) : new Response(null, { status: 404 }));
