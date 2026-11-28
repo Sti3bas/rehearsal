@@ -23,6 +23,25 @@ nuxt("leaves Nuxt redirects to the browser and fakes direct navigations", async 
   expect((await (await page.goto(nuxtURL + "/api/state"))!.json()).global.users).toEqual(["Redirected"]);
 });
 
+nuxt("rejects browser and SSR fetches for a network error", async ({ nuxt, page, baseURL, nuxtURL }) => {
+  const url = baseURL + "/state";
+  await nuxt.fake({ [`GET ${url}`]: [{ networkError: true }, { networkError: true }, passthrough] });
+
+  expect(await (await page.goto(nuxtURL + "/api/fake-network"))?.json()).toEqual({ error: "TypeError" });
+  await page.goto(baseURL!);
+  const failure = page.waitForEvent("requestfailed", { predicate: (request) => request.url() === url });
+  expect(await page.evaluate(async (target) => {
+    try {
+      return { status: (await fetch(target)).status };
+    } catch (error) {
+      if (!(error instanceof TypeError)) throw error;
+      return { error: error.name };
+    }
+  }, url)).toEqual({ error: "TypeError" });
+  expect((await failure).failure()).not.toBeNull();
+  expect(await (await page.goto(nuxtURL + "/api/fake-network"))?.json()).toEqual({ status: 200 });
+});
+
 nuxt("forwards an SSR replacement body to the real destination on a fake miss", async ({ nuxt, page, baseURL, nuxtURL }) => {
   await nuxt.fake({ [`GET ${baseURL}/state`]: { json: { users: ["Unrelated"] } } });
   expect(await (await page.goto(nuxtURL + "/api/fake-echo"))?.json()).toEqual({ body: "replacement" });

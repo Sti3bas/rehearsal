@@ -46,6 +46,7 @@ export async function proxyNuxtFetch(
   const reply = await result.json() as Parameters<typeof mockResponse>[0] | null;
   if (!reply) return null;
   if (reply.delay) await wait(reply.delay, request.signal);
+  if (reply.networkError) throw new TypeError("fetch failed");
   const { body, ...response } = mockResponse(reply);
   return new HttpResponse(request.method === "HEAD" ? undefined : body, response);
 }
