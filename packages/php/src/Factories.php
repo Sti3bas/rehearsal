@@ -98,15 +98,25 @@ final class Factories
             }
         }
         $body = array_slice($tokens, $index);
-        if (array_map(static fn (PhpToken $token) => $token->text, array_slice($body, 0, 3)) !== ['{', 'return', '[']
-            || array_map(static fn (PhpToken $token) => $token->text, array_slice($body, -3)) !== [']', ';', '}']) {
+        if (! ($body[0] ?? null)?->is('{') || ! ($body[1] ?? null)?->is(T_RETURN)) {
+            return [];
+        }
+        $array = $body[2] ?? null;
+        if ($array?->is('[')) {
+            [$entriesStart, $close] = [3, ']'];
+        } elseif ($array?->is(T_ARRAY) && ($body[3] ?? null)?->is('(')) {
+            [$entriesStart, $close] = [4, ')'];
+        } else {
+            return [];
+        }
+        if (array_map(static fn (PhpToken $token) => $token->text, array_slice($body, -3)) !== [$close, ';', '}']) {
             return [];
         }
 
         $keys = [];
         $depth = 0;
         $entry = true;
-        foreach (array_slice($body, 3, -3, true) as $index => $token) {
+        foreach (array_slice($body, $entriesStart, -3, true) as $index => $token) {
             if ($depth === 0 && $entry && $token->is(T_CONSTANT_ENCAPSED_STRING)
                 && $body[$index + 1]->is(T_DOUBLE_ARROW)
                 && preg_match('/^[\'"]([a-zA-Z_][a-zA-Z_0-9]*)[\'"]$/D', $token->text, $match)) {

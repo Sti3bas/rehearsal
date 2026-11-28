@@ -22,6 +22,9 @@ it('emits the public allowlists and best-effort model and operation types', func
         ], 'DynamicListing' => [
             'model' => TypeTestListing::class,
             'factory' => TypeTestDynamicListingFactory::class,
+        ], 'LongArrayListing' => [
+            'model' => TypeTestListing::class,
+            'factory' => TypeTestLongArrayListingFactory::class,
         ]],
         'rehearsal.artisan' => ['reindex' => ['rules' => ['force' => 'boolean'], 'fixed' => ['secret' => 'not exported']]],
         'rehearsal.fault_paths' => ['/listings/**'],
@@ -43,6 +46,7 @@ it('emits the public allowlists and best-effort model and operation types', func
         $contents = file_get_contents($path);
         $listing = explode('"states":', explode('"Listing": {', $contents, 2)[1], 2)[0];
         $dynamic = explode('"states":', explode('"DynamicListing": {', $contents, 2)[1], 2)[0];
+        $longArray = explode('"states":', explode('"LongArrayListing": {', $contents, 2)[1], 2)[0];
         [$input, $output] = explode('"model":', $listing, 2);
         expect($contents)
             ->toContain('declare module "@sti3bas/rehearsal"', '"Listing":', '"price"?: number | null;', '"secret"?: string | null;')
@@ -62,6 +66,7 @@ it('emits the public allowlists and best-effort model and operation types', func
             ->not->toContain('"display_title"');
         expect($input)->toContain('"metadata"?: unknown[] | Record<string, unknown> | null;', '"published_at"?: number | null;');
         expect($dynamic)->not->toContain('"factoryRequired"');
+        expect($longArray)->toContain('"factoryRequired": "sku";');
     } finally {
         if (is_file($path)) {
             unlink($path);
@@ -115,5 +120,15 @@ final class TypeTestDynamicListingFactory extends Factory
         $title = 'Chair';
 
         return ['title' => $title];
+    }
+}
+
+final class TypeTestLongArrayListingFactory extends Factory
+{
+    public function definition(): array
+    {
+        return array(
+            'sku' => fake()->randomElement(array('A', 'B')),
+        );
     }
 }
