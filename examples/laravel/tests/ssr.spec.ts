@@ -6,6 +6,7 @@ nuxt.use({ nuxtURL: "http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT })
 
 nuxt("matches Nuxt fake root URLs without a trailing slash", async ({ nuxt, page, baseURL }) => {
   await nuxt.fake({ [`GET ${baseURL}`]: { body: "Fake root" } });
+  expect(await (await page.request.get(baseURL!)).text()).toBe("Rehearsal");
   expect(await (await page.goto(baseURL!))?.text()).toBe("Fake root");
 });
 
