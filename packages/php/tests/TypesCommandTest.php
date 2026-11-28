@@ -35,7 +35,17 @@ it('emits the public allowlists and best-effort model and operation types', func
         $table->integer('price')->nullable();
         $table->string('title');
         $table->string('sku');
+        $table->dateTime('published_at')->nullable();
     });
+    $row = (new TypeTestListing)->setConnection('rehearsal_types')->forceFill([
+        'title' => 'Chair',
+        'sku' => 'A',
+        'published_at' => 1_700_000_000,
+    ]);
+    $row->timestamps = false;
+    $row->save();
+    expect($row->newQuery()->where('published_at', 1_700_000_000)->exists())->toBeFalse()
+        ->and($row->newQuery()->where('published_at', $row->getRawOriginal('published_at'))->exists())->toBeTrue();
     $this->app->register(ServiceProvider::class);
     expect((new TypeTestListing)->forceFill(['display_title' => 'Chair'])->toArray())->toBe(['title' => 'Chair']);
     app(Operations::class)->register('listing.mark', ['id' => 'required|integer', 'note' => 'nullable|string'], static fn (): ?string => null);
@@ -48,6 +58,7 @@ it('emits the public allowlists and best-effort model and operation types', func
         $dynamic = explode('"states":', explode('"DynamicListing": {', $contents, 2)[1], 2)[0];
         $longArray = explode('"states":', explode('"LongArrayListing": {', $contents, 2)[1], 2)[0];
         [$input, $output] = explode('"model":', $listing, 2);
+        [$model, $filters] = explode('"modelFilters":', $output, 2);
         expect($contents)
             ->toContain('declare module "@sti3bas/rehearsal"', '"Listing":', '"price"?: number | null;', '"secret"?: string | null;')
             ->toContain('"model": { "id": number;', '"status"?: "active" | "sold";', '"states": { "sold": []; };', '"seller": "User";')
@@ -60,11 +71,12 @@ it('emits the public allowlists and best-effort model and operation types', func
             ->not->toContain('"factoryRequired": "sku"', '"factoryRequired": "secret"');
         expect($input)->toContain('"display_title"?: unknown;');
         expect($output)
-            ->toContain('"modelColumns": "id" | "price" | "title" | "sku";')
-            ->toContain('"published_at"?: string | null;')
+            ->toContain('"modelColumns": "id" | "price" | "title" | "sku" | "published_at";')
             ->toContain('"metadata"?: unknown[] | Record<string, unknown> | null;', '"settings"?: Record<string, unknown> | null;', '"tags"?: unknown[] | Record<string, unknown> | null;', '"labels"?: unknown[] | Record<string, unknown> | null;')
             ->not->toContain('"display_title"');
         expect($input)->toContain('"metadata"?: unknown[] | Record<string, unknown> | null;', '"published_at"?: number | null;');
+        expect($model)->toContain('"published_at"?: string | null;');
+        expect($filters)->toContain('"published_at"?: string | null;')->not->toContain('"published_at"?: number | null;');
         expect($dynamic)->not->toContain('"factoryRequired"');
         expect($longArray)->toContain('"factoryRequired": "sku";');
     } finally {

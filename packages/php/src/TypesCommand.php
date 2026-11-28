@@ -147,6 +147,7 @@ final class TypesCommand extends Command
                 $output[$attribute] = $this->phpType($type);
             }
         }
+        $filters = $columnNames === null ? $output : array_intersect_key($output, array_flip($columnNames));
         $output = array_diff_key($output, array_flip($model->getHidden()));
         if ($model->getVisible() !== []) {
             $output = array_intersect_key($output, array_flip($model->getVisible()));
@@ -169,6 +170,7 @@ final class TypesCommand extends Command
         return $this->shape([
             'attributes' => $this->shape([], $input),
             'model' => $this->shape($required, array_diff_key($output, $required)),
+            'modelFilters' => $this->shape([], $filters),
             ...($factoryRequired === [] ? [] : ['factoryRequired' => $this->literals(array_keys($factoryRequired))]),
             ...($columnNames === null ? [] : ['modelColumns' => $this->literals($columnNames)]),
             'states' => $this->shape($stateShapes),

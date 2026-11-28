@@ -63,9 +63,12 @@ export type ModelWhereOperator = "=" | "!=" | "<" | "<=" | ">" | ">=" | "like";
 type ModelColumnNames<K extends FactoryName> = Factories[K] extends { modelColumns: infer Columns } ? Columns & string : string;
 export type ModelColumn<K extends FactoryName> = keyof Factories[K]["model"] & ModelColumnNames<K>;
 type ModelFilterKeys<K extends FactoryName> = Extract<keyof FactoryAttributes<K>, ModelColumnNames<K>>;
-type ModelFilters<K extends FactoryName> = [ModelFilterKeys<K>] extends [never]
+type ModelFilterValues<K extends FactoryName> = Factories[K] extends { modelFilters: infer Filters }
+  ? Filters
+  : { [C in ModelFilterKeys<K>]?: C extends keyof Factories[K]["model"] ? Factories[K]["model"][C] : FactoryAttributes<K>[C] };
+type ModelFilters<K extends FactoryName> = [keyof ModelFilterValues<K>] extends [never]
   ? Record<string, never>
-  : Pick<FactoryAttributes<K>, ModelFilterKeys<K>>;
+  : { [C in keyof ModelFilterValues<K>]?: ModelFilterValues<K>[C] | null };
 export interface ModelQuery<K extends FactoryName> {
   where(attrs: ModelFilters<K>): ModelQuery<K>;
   where<C extends ModelColumn<K>>(column: C, value: Factories[K]["model"][C] | null): ModelQuery<K>;

@@ -5,9 +5,10 @@ declare module "@sti3bas/rehearsal" {
   interface RehearsalSchema {
     factories: {
       Listing: {
-        attributes: { title?: string; price?: number; display_title?: string };
-        model: { id: number; title?: string; price?: number; summary?: string };
-        modelColumns: "id" | "price" | "title";
+        attributes: { title?: string; price?: number; display_title?: string; published_at?: number };
+        model: { id: number; title?: string; price?: number; summary?: string; published_at?: string | null };
+        modelColumns: "id" | "price" | "title" | "published_at";
+        modelFilters: { id?: number; title?: string; price?: number; published_at?: string | null };
         states: {
           sold: [];
           soldTo: [buyer: FactoryModelRef<"User">, soldAt?: string | Date | null];
@@ -76,9 +77,12 @@ test("generated types reach the Playwright fixture", async ({ laravel }) => {
   expectTypeOf(second.title).toEqualTypeOf<string | undefined>();
   const many = await laravel.factory("Listing").count(3).sold().create((_, i) => ({ title: `L${i}` }));
   expectTypeOf(many[0].id).toEqualTypeOf<number>();
-  await laravel.factory("Listing").create({ display_title: "Chair" });
+  await laravel.factory("Listing").create({ display_title: "Chair", published_at: 1_700_000_000 });
   await laravel.model("Listing").where({ title: "Chair" }).where("price", 10).get();
+  laravel.model("Listing").where({ published_at: "2023-11-14 22:13:20" });
 
+  // @ts-expect-error factory write types do not apply to query filters
+  laravel.model("Listing").where({ published_at: 1_700_000_000 });
   // @ts-expect-error factory-only setter is not a database column
   laravel.model("Listing").where({ display_title: "Chair" });
   // @ts-expect-error serialized accessor is not a database column
