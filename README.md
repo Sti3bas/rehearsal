@@ -12,6 +12,8 @@
 
 Rehearsal joins a real Laravel app to native Playwright Test. A worker can create users, sign in, send mail, or fill a search index without affecting another worker doing the same thing. You keep Playwright's browser APIs, traces, retries, and reporters; Rehearsal provisions and resets the Laravel state behind them.
 
+**[Documentation](https://sti3bas.github.io/rehearsal/)** · Installation, configuration, extension guides, and API reference.
+
 - **Run in parallel:** isolated databases, files, sessions, cache, and queues with one Laravel HTTP server.
 - **Arrange tests from TypeScript:** Laravel model factories, registered states, browser login, time travel, queue drains, and named app operations.
 - **Test real services:** opt in to Mailpit, Scout (database, Meilisearch, or Typesense), and Reverb.

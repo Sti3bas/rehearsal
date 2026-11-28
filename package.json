@@ -21,12 +21,16 @@
     "@playwright/test": "^1.65.1",
     "@types/node": "^22.0.0",
     "typescript": "^5.8.0",
+    "vitepress": "^1.6.4",
     "vitest": "^5.1.2"
   },
   "scripts": {
     "prepare": "npm run build",
     "build": "tsc -p packages/ts",
     "test": "tsc -p packages/ts/tests/tsconfig.types.json && vitest run packages/ts/tests",
-    "e2e": "cd examples/laravel && playwright test"
+    "e2e": "cd examples/laravel && playwright test",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   }
 }
