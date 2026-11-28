@@ -92,10 +92,17 @@ final class FakeRoutes
 
     private static function matchPattern(string $pattern, string $candidate, bool $candidateIsPattern = false): bool
     {
+        $pattern = self::decodeRouteText($pattern);
+        $candidate = self::decodeRouteText($candidate);
         $segment = $candidateIsPattern ? '(?:(?!\*\*)[^/])*' : '[^/]*';
         $regex = strtr(preg_quote($pattern, '~'), ['\*\*' => '.*', '\*' => $segment]);
 
         return preg_match('~\A'.$regex.'\z~D', $candidate) === 1;
+    }
+
+    private static function decodeRouteText(string $value): string
+    {
+        return preg_replace_callback('/(?:%[89a-f][0-9a-f])+/i', static fn (array $match): string => rawurldecode($match[0]), $value);
     }
 
     private static function applicationPath(string $path): bool

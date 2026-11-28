@@ -273,7 +273,7 @@ PHP);
             'rehearsal.reverb.origin' => 'http://127.0.0.1:18080',
             'rehearsal.queues' => null,
             'rehearsal.artisan' => ['discover' => true],
-            'rehearsal.fake_routes' => ['discover' => true, 'GET /api/allowed/'],
+            'rehearsal.fake_routes' => ['discover' => true, 'GET /api/allowed/', 'GET /api/café', 'GET /api/gr%C3%B8n'],
             'rehearsal.factories' => ['discover' => false],
             'rehearsal.operations' => ['discover' => false],
             'horizon.defaults' => ['sup-1' => ['queue' => ['high', 'default']]],
@@ -285,6 +285,11 @@ PHP);
         expect(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/api/files/folder/item'))->toBeTrue();
         expect(\Sti3bas\Rehearsal\FakeRoutes::keys())->toContain('GET /api/allowed');
         expect(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/api/allowed/'))->toBeTrue();
+        expect(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/api/caf%c3%a9'))->toBeTrue()
+            ->and(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/api/grøn'))->toBeTrue()
+            ->and(\Sti3bas\Rehearsal\FakeRoutes::matches('/api/café', '/api/caf%C3%A9', '/api/caf%C3%A9?x=1'))->toBeTrue()
+            ->and(\Sti3bas\Rehearsal\FakeRoutes::matches('/api/caf%C3%A9', '/api/café', '/api/café'))->toBeTrue()
+            ->and(\Sti3bas\Rehearsal\FakeRoutes::matches('/api/%2A', '/api/item', '/api/item'))->toBeFalse();
 
         expect(\Sti3bas\Rehearsal\Callbacks::all())
             ->toHaveKey('/webhooks/demo', $ns.'\\StaticCallback')
