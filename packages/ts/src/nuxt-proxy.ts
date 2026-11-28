@@ -20,7 +20,7 @@ export function nuxtProxyContext(request: { headers: Record<string, unknown>; so
 export async function proxyNuxtFetch(
   fetch: typeof globalThis.fetch, context: NonNullable<ReturnType<typeof nuxtProxyContext>>, input: RequestInfo | URL, init?: RequestInit,
 ) {
-  const request = new Request(input, init);
+  const request = new Request(input instanceof Request ? input.clone() : input, init);
   request.signal.throwIfAborted();
   const headers = new Headers(request.headers);
   headers.delete(fakeBridgeHeader);
