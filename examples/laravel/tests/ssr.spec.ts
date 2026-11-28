@@ -198,7 +198,7 @@ test("runs Laravel route fake callbacks in the Playwright test", async ({ larave
     hits.push(name);
     return { json: { users: [name] } };
   });
-  expect(await page.evaluate(async () => (await (await fetch("/state?name=Browser&name=Repeated")).json()).users)).toEqual(["Browser Repeated"]);
+  expect(await page.evaluate(async () => (await (await fetch("/state/?name=Browser&name=Repeated")).json()).users)).toEqual(["Browser Repeated"]);
   expect(await (await page.request.get(frontend)).text()).toContain("<li>SSR</li>");
   expect(hits).toEqual(["Browser Repeated", "SSR"]);
 });

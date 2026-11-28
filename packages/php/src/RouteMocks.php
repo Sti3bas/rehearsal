@@ -50,6 +50,7 @@ final class RouteMocks
         ]);
         if ($fake) {
             abort_unless(FakeRoutes::allows($data['method'], $data['path']), 422);
+            $data['path'] = FakeRoutes::normalize($data['path']);
         } else {
             $data['responses'] = [$data['response']];
             unset($data['response']);
@@ -118,7 +119,7 @@ final class RouteMocks
         if (! is_file($attempt->path('route-fakes.json'))) {
             return null;
         }
-        $rule = self::claim($attempt, $request->method(), $request->getRequestUri(), true);
+        $rule = self::claim($attempt, $request->method(), FakeRoutes::normalize($request->getRequestUri()), true);
         if ($rule === null) {
             return null;
         }

@@ -56,6 +56,7 @@ final class FakeRoutes
 
     public static function allows(string $method, string $target): bool
     {
+        $target = self::normalize($target);
         $path = explode('?', $target, 2)[0];
         if (! self::applicationPath($path)) {
             return false;
@@ -68,6 +69,13 @@ final class FakeRoutes
         }
 
         return false;
+    }
+
+    public static function normalize(string $target): string
+    {
+        [$path, $query] = array_pad(explode('?', $target, 2), 2, null);
+
+        return (rtrim($path, '/') ?: '/').($query === null ? '' : '?'.$query);
     }
 
     public static function matches(string $pattern, string $path, string $target): bool
