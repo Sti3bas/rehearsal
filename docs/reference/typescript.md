@@ -17,6 +17,24 @@ Install `@sti3bas/rehearsal` alongside `@playwright/test`. Import `test` and `ex
 
 The package exports the `RehearsalSchema` interface for generated module augmentation, as well as public factory, model query, HTTP fake, route response, operation, and integration data types.
 
+### Secondary browser sessions
+
+Use the `newBrowser` fixture to open another browser context in the same Laravel attempt without sharing cookies with the primary context:
+
+```ts
+test("another user can see the change", async ({ laravel, newBrowser }) => {
+  const user = await laravel.create("User");
+  const { page } = await newBrowser({
+    user,
+    context: { userAgent: "Secondary browser" },
+    page: true,
+  });
+  await page.goto("/");
+});
+```
+
+Each call inherits Playwright's context options; `context` overrides them for that call. Omit `user` to skip Rehearsal login, or pass the ID of an existing user. Omit `page` to get just the context. If `page: true`, the page follows `laravel.travel()`. Rehearsal closes these contexts when the test ends. With `reverbTest`, the secondary context also receives the attempt's Reverb settings.
+
 ### Playwright `use` options
 
 | Option | Default | Meaning |

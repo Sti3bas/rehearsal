@@ -1,4 +1,5 @@
 import { test as base, type APIRequestContext } from "@playwright/test";
+import { managedBrowsers, type NewBrowser } from "./browser.js";
 import { Laravel, startAttempt } from "./client.js";
 import { bindOperations, type BoundOperations, type OperationDefinitions } from "./extensions.js";
 import { injectReverb, Reverb } from "./reverb.js";
@@ -20,7 +21,7 @@ interface WorkerOptions {
   rehearsalRun: RunConnection;
 }
 
-export const test = base.extend<{ laravel: Laravel }, WorkerOptions>({
+export const test = base.extend<{ laravel: Laravel; newBrowser: NewBrowser }, WorkerOptions>({
   laravelURL: [undefined, { option: true, scope: "worker" }],
   rehearsalRoot: [process.cwd(), { option: true, scope: "worker" }],
   rehearsalCapability: [undefined, { option: true, scope: "worker" }],
@@ -63,6 +64,7 @@ export const test = base.extend<{ laravel: Laravel }, WorkerOptions>({
     await laravel.preparePage(page);
     await use(page);
   },
+  newBrowser: ({ browser, laravel }, use) => managedBrowsers(browser, laravel, use),
 });
 
 export const reverbTest = test.extend<{ reverb: Reverb }>({
@@ -74,9 +76,16 @@ export const reverbTest = test.extend<{ reverb: Reverb }>({
     await injectReverb(context, baseURL, laravel.integrationMetadata("reverb"));
     await use(context);
   },
+  newBrowser: ({ browser, laravel, baseURL }, use) =>
+    managedBrowsers(browser, laravel, use, async (context, options) => {
+      const frontend = options.context?.baseURL ?? baseURL;
+      if (!frontend) throw new Error("The Rehearsal Reverb plugin requires a frontend baseURL.");
+      await injectReverb(context, frontend, laravel.integrationMetadata("reverb"));
+    }),
 });
 
 export { expect } from "@playwright/test";
+export type { NewBrowser, NewBrowserOptions, NewBrowserSession } from "./browser.js";
 export { Laravel, type FactoryCall, type FactoryDefinition, type TypesenseClientConfig } from "./client.js";
 export type { FactoryBuilder, FactoryCountBuilder, FactoryModel, FactoryModelRef, FactoryName, ModelColumn, ModelQuery, ModelWhereOperator } from "./schema.js";
 export type { RouteTarget, RouteResponse } from "./routes.js";

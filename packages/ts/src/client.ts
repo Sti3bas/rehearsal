@@ -87,7 +87,7 @@ export class Laravel {
     return new Mailbox(this, recipient);
   }
 
-  async bindContext(context: BrowserContext) {
+  async bindContext(context: BrowserContext, { primary = true } = {}) {
     const origins = [new URL(this.origin), new URL(this.frontendOrigin)];
     if (!origins.every(loopback)) {
       throw new Error("Rehearsal attempt cookies require loopback origins.");
@@ -96,7 +96,7 @@ export class Laravel {
     await context.addCookies([...hosts.values()].map((origin) => ({
       name: markerCookie, value: this.marker, url: origin + "/", httpOnly: true, sameSite: "Lax",
     })));
-    this.context ??= context;
+    if (primary) this.context ??= context;
     this.contexts.add(context);
     context.once("close", () => this.contexts.delete(context));
     if (this.patterns.length) await this.installRouteMocks(context);
