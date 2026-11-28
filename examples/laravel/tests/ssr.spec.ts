@@ -207,11 +207,16 @@ test("reads multipart fields and files in Laravel fake callbacks", async ({ lara
   await page.goto("/");
   await laravel.fake("POST /login", async (request) => {
     const form = await request.formData();
-    return { json: { value: form.get("fields[name]"), file: await (form.get("file") as File).text() } };
+    return { json: { value: form.get("fields[name]"), tags: form.getAll("tags[]"), file: await (form.get("file") as File).text() } };
   });
+  const multipart = new FormData();
+  multipart.append("fields[name]", "sample");
+  multipart.append("tags[]", "oak");
+  multipart.append("tags[]", "pine");
+  multipart.append("file", new Blob(["file text"], { type: "text/plain" }), "sample.txt");
   expect(await (await page.request.post("/login", {
-    multipart: { "fields[name]": "sample", file: { name: "sample.txt", mimeType: "text/plain", buffer: Buffer.from("file text") } },
-  })).json()).toEqual({ value: "sample", file: "file text" });
+    multipart,
+  })).json()).toEqual({ value: "sample", tags: ["oak", "pine"], file: "file text" });
 });
 
 test.describe("route mocks on a reused slot", () => {

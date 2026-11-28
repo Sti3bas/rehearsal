@@ -181,8 +181,9 @@ final class RouteMocks
     private static function multipartParts(array $values, ?string $prefix = null): array
     {
         $parts = [];
+        $list = $prefix !== null && array_is_list($values);
         foreach ($values as $key => $value) {
-            $name = $prefix === null ? (string) $key : $prefix.'['.$key.']';
+            $name = $prefix === null ? (string) $key : $prefix.'['.($list && ! is_array($value) ? '' : $key).']';
             if (is_array($value)) {
                 array_push($parts, ...self::multipartParts($value, $name));
             } elseif ($value instanceof UploadedFile && $value->isValid()) {

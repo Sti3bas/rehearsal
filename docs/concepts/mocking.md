@@ -43,6 +43,8 @@ Generate declarations with [`rehearsal:types`](./factories#generate-types-from-y
 
 Callbacks receive a standard `Request` and run in the Playwright test process, so they can read and update test-local state. They may return a response or a promise. Use `once` or `times` to limit static responses; otherwise each sequence entry is used once except the final one, which repeats. A delay without a response lets the real route run afterward. A headers-only fake returns an empty HTTP 200 with those headers. `clearFakes()` clears incoming fake rules independently of browser mocks and outbound HTTP fakes. Each attempt starts with no rules.
 
+When PHP exposes the original multipart body, Rehearsal forwards it unchanged. When PHP has already parsed it, callbacks receive reconstructed fields and files. Use bracketed names (for example, `tags[]`) for repeated values: PHP collapses repeated unbracketed fields before Laravel sees them. PHP's parsed data also cannot distinguish a dense list of explicitly numbered names from empty brackets, or recover the original ordering between fields and files.
+
 ## Route verified callbacks
 
 External providers cannot send the browser's attempt marker. For a provider that
