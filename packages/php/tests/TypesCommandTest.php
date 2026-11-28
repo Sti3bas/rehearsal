@@ -32,7 +32,8 @@ it('emits the public allowlists and best-effort model and operation types', func
             'factory' => TypeTestAppendedListingFactory::class,
         ]],
         'rehearsal.artisan' => ['reindex' => ['rules' => ['force' => 'boolean'], 'fixed' => ['secret' => 'not exported']]],
-        'rehearsal.fault_paths' => ['/listings/**'],
+        'rehearsal.fake_routes' => ['GET /listings/**'],
+        'rehearsal.fake_response_types' => ['GET /listings/**' => '{ data: { id: number }[] }', 'POST /forbidden' => 'number'],
         'rehearsal.schedule' => ['expiry' => []],
     ]);
     Schema::connection('rehearsal_types')->create('listings', function (Blueprint $table) {
@@ -72,8 +73,8 @@ it('emits the public allowlists and best-effort model and operation types', func
             ->toContain('"model": { "id": number;', '"status"?: "active" | "sold";', '"states": { "sold": []; };', '"seller": "User";')
             ->toContain('"listing.mark": { input: { "id": number; "note"?: string | null; }; output: string | null }')
             ->toContain('import type { ModelResult } from "@sti3bas/rehearsal";', '"listing.partial": { input: Record<string, never>; output: ModelResult<"Listing"> }')
-            ->toContain('"reindex": { "force"?: boolean; }', '"schedules": "expiry";', '"faultPaths": "/listings/**";')
-            ->not->toContain('not exported');
+            ->toContain('"reindex": { "force"?: boolean; }', '"schedules": "expiry";', '"fakeRoutes": { "GET /listings/**": { data: { id: number }[] }; }')
+            ->not->toContain('not exported', 'POST /forbidden');
         expect($listing)
             ->toContain('"published_at"?: string | null;', '"sku"?: string;', '"factoryRequired": "title";')
             ->not->toContain('"factoryRequired": "sku"', '"factoryRequired": "secret"');

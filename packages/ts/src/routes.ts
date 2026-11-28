@@ -14,6 +14,19 @@ export interface RouteResponse {
 }
 
 export type RouteTarget = string | { url: string; method: string };
+export type FakeMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+export type FakeRoute = { url: string; method: FakeMethod | Lowercase<FakeMethod> };
+export type FakeResponse<Json = unknown> = Pick<RouteResponse, "status" | "headers" | "delay" | "once" | "times"> & (
+  { json?: Json; body?: never } | { json?: never; body?: string }
+);
+export type FakeCallback<Json = unknown> = (request: Request) => FakeResponse<Json> | Promise<FakeResponse<Json>>;
+
+export function fakeRoutePattern(target: string | FakeRoute, origin: string) {
+  if (typeof target !== "string") return routePattern(target, origin);
+  const separator = target.indexOf(" ");
+  if (separator === -1) throw new Error('Rehearsal fakes require a method and path, such as "GET /api/feed".');
+  return routePattern({ method: target.slice(0, separator), url: target.slice(separator + 1) }, origin);
+}
 type EncodedRouteResponse = Omit<RouteResponse, "json"> & { jsonBody?: string; gate?: string };
 
 export function encodeRouteResponse({ json, ...response }: RouteResponse): EncodedRouteResponse {

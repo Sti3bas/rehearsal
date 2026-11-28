@@ -190,7 +190,7 @@ PHP);
     }
 });
 
-it('auto-discovers #[Callback] classes, custom integrations, Horizon queues, Artisan commands, and route fault paths', function () {
+it('auto-discovers #[Callback] classes, custom integrations, Horizon queues, Artisan commands, and fake routes', function () {
     $dir = sys_get_temp_dir().'/rehearsal-zero-'.bin2hex(random_bytes(8));
     mkdir($dir, 0777, true);
     $ns = 'Tests\\Fixtures\\Zero'.bin2hex(random_bytes(4));
@@ -261,6 +261,7 @@ PHP);
 
     try {
         \Illuminate\Support\Facades\Route::get('/api/items/{item}/offers', static fn () => ['ok' => true]);
+        \Illuminate\Support\Facades\Route::get('/api/files/{path}', static fn () => [])->where('path', '.*');
         config([
             'rehearsal.callbacks' => ['discover' => true, 'paths' => [$dir]],
             'rehearsal.integrations' => [
@@ -272,13 +273,18 @@ PHP);
             'rehearsal.reverb.origin' => 'http://127.0.0.1:18080',
             'rehearsal.queues' => null,
             'rehearsal.artisan' => ['discover' => true],
-            'rehearsal.fault_paths' => ['discover' => true],
+            'rehearsal.fake_routes' => ['discover' => true, 'GET /api/allowed/'],
             'rehearsal.factories' => ['discover' => false],
             'rehearsal.operations' => ['discover' => false],
             'horizon.defaults' => ['sup-1' => ['queue' => ['high', 'default']]],
             'horizon.environments' => ['production' => ['sup-2' => ['queue' => ['processing', 'moderation']]]],
         ]);
         $this->app->register(ServiceProvider::class);
+
+        expect(\Sti3bas\Rehearsal\FakeRoutes::keys())->toContain('GET /api/files/**');
+        expect(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/api/files/folder/item'))->toBeTrue();
+        expect(\Sti3bas\Rehearsal\FakeRoutes::keys())->toContain('GET /api/allowed');
+        expect(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/api/allowed/'))->toBeTrue();
 
         expect(\Sti3bas\Rehearsal\Callbacks::all())
             ->toHaveKey('/webhooks/demo', $ns.'\\StaticCallback')
@@ -294,13 +300,15 @@ PHP);
         expect(\Sti3bas\Rehearsal\QueueControl::queues())
             ->toContain('default', 'high', 'processing', 'moderation');
 
-        expect(\Sti3bas\Rehearsal\RouteMocks::faultPathAllowed('/api/items/*/offers'))->toBeTrue();
-        expect(\Sti3bas\Rehearsal\RouteMocks::faultPathAllowed('/_rehearsal/call'))->toBeFalse();
+        expect(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/api/items/*/offers'))->toBeTrue()
+            ->and(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/api/items/42/offers'))->toBeTrue()
+            ->and(\Sti3bas\Rehearsal\FakeRoutes::allows('POST', '/api/items/42/offers'))->toBeFalse()
+            ->and(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/_rehearsal/call'))->toBeFalse();
 
         $this->artisan('rehearsal:types', ['path' => $typesPath])->assertSuccessful();
         $contents = file_get_contents($typesPath);
         expect($contents)
-            ->toContain('"/api/items/*/offers"')
+            ->toContain('"GET /api/items/*/offers": unknown;', '"HEAD /api/items/*/offers": unknown;')
             ->toContain('"list": Record<string, unknown>');
     } finally {
         foreach (glob($dir.'/*.php') ?: [] as $file) {
@@ -360,7 +368,7 @@ PHP);
             'rehearsal.operations' => ['discover' => true, 'paths' => [$dir]],
             'rehearsal.factories' => ['discover' => false],
             'rehearsal.artisan' => ['discover' => false],
-            'rehearsal.fault_paths' => false,
+            'rehearsal.fake_routes' => false,
         ]);
         $this->app->register(ServiceProvider::class);
 

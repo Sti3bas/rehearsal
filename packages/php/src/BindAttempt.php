@@ -47,9 +47,9 @@ final readonly class BindAttempt
                 $integration->bind($attempt);
             }
 
-            if (config('rehearsal.fault_paths') && ! $request->is('_rehearsal', '_rehearsal/*')
-                && ($fault = RouteMocks::fault($attempt, $request)) !== null) {
-                return $this->app->make(HandleCors::class)->handle($request, static fn () => $fault);
+            if (config('rehearsal.fake_routes') && ! $request->is('_rehearsal', '_rehearsal/*')
+                && ($fake = RouteMocks::fake($attempt, $request)) !== null) {
+                return $this->app->make(HandleCors::class)->handle($request, static fn () => $fake);
             }
 
             HttpFakes::bind($attempt);

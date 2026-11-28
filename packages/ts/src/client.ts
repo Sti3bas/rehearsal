@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { APIRequestContext, BrowserContext, Page } from "@playwright/test";
 import { createFactoryBuilder, serializeFactoryArg, tagModel } from "./factory.js";
+import { FakeBridge } from "./fake-bridge.js";
 import { encodeHttpRules, type HttpFakeRules } from "./http.js";
 import { Mailbox } from "./mail.js";
 import { createModelQuery } from "./model.js";
 import { Queue, type DrainOptions, type DrainResult } from "./queue.js";
 import { capabilityHeader, loopback, markerCookie, markerHeader, protocol } from "./transport.js";
-import { claimRoute, encodeRouteResponse, matchesRoute, mockResponse, routePattern, wait, waitForRouteGate, type RouteResponse, type RouteTarget } from "./routes.js";
-import type { ArtisanInput, ArtisanName, BatchChecks, BatchFactory, BatchResults, FactoryAttributes, FactoryBuilder, FactoryModel, FactoryName, FactoryOptions, FactoryState, FaultArguments, FaultTarget, InputArguments, ModelQuery, OperationInput, OperationName, OperationOutput, ScheduleName } from "./schema.js";
+import { claimRoute, encodeRouteResponse, fakeRoutePattern, matchesRoute, mockResponse, routePattern, wait, waitForRouteGate, type FakeCallback, type FakeResponse, type RouteResponse, type RouteTarget } from "./routes.js";
+import type { ArtisanInput, ArtisanName, BatchChecks, BatchFactory, BatchResults, FactoryAttributes, FactoryBuilder, FactoryModel, FactoryName, FactoryOptions, FactoryState, FakeArguments, FakeTarget, InputArguments, ModelQuery, OperationInput, OperationName, OperationOutput, ScheduleName } from "./schema.js";
 
 export type FactoryCall =
   | { state: string; args?: readonly unknown[] }
@@ -31,10 +32,6 @@ export interface TypesenseClientConfig {
 
 type Row = Record<string, unknown>;
 type FactoryResult = Row | Row[];
-type FaultResponse = Omit<RouteResponse, "abort" | "networkError" | "passthrough">;
-type RouteActions<T extends RouteTarget> = Omit<ReturnType<Laravel["routeActions"]>, "fault"> & {
-  fault(...args: FaultArguments<T, FaultResponse>): Promise<unknown>;
-};
 
 export class Laravel {
   private context?: BrowserContext;
@@ -43,6 +40,8 @@ export class Laravel {
   private patterns: ReturnType<typeof routePattern>[] = [];
   private pages = new Set<Page>();
   private time?: Date;
+  private fakeBridge = new FakeBridge();
+  private callbackFailure?: { error: unknown };
   readonly queue = new Queue(this);
   readonly http = {
     fake: (rules: HttpFakeRules, options: { preventStrayRequests?: boolean } = {}) =>
@@ -102,9 +101,9 @@ export class Laravel {
     if (this.patterns.length) await this.installRouteMocks(context);
   }
 
-  route<const T extends RouteTarget>(target: T): RouteActions<T>;
-  route<P, const T extends RouteTarget>(target: (params: P) => T, params: P): RouteActions<T>;
-  route<const T extends RouteTarget>(target: () => T): RouteActions<T>;
+  route(target: RouteTarget): ReturnType<Laravel["routeActions"]>;
+  route<P>(target: (params: P) => RouteTarget, params: P): ReturnType<Laravel["routeActions"]>;
+  route(target: () => RouteTarget): ReturnType<Laravel["routeActions"]>;
   route<P>(target: RouteTarget | ((params?: P) => RouteTarget), params?: P) {
     return this.routeActions(routePattern(typeof target === "function" ? target(params) : target, this.origin));
   }
@@ -114,8 +113,37 @@ export class Laravel {
     this.patterns = [];
   }
 
-  clearRouteFaults() {
-    return this.operation("route.fault.clear", {});
+  async clearFakes() {
+    await this.operation<null>("route.fake.clear", {});
+    this.fakeBridge.clear();
+  }
+
+  async disposeFakes() {
+    await this.fakeBridge.close();
+    if (this.callbackFailure) throw this.callbackFailure.error;
+  }
+
+  fake<const T extends FakeTarget>(target: T, ...args: FakeArguments<NoInfer<T>>): Promise<null>;
+  async fake(target: FakeTarget, response: FakeResponse | readonly FakeResponse[] | FakeCallback) {
+    const pattern = fakeRoutePattern(target, this.origin);
+    if (typeof response === "function") {
+      const callback = await this.fakeBridge.register(async (request) => {
+      try {
+        return encodeRouteResponse(await response(request));
+      } catch (error) {
+        const cancelled = request.signal.aborted && (error === request.signal.reason ||
+          (error instanceof Error && (error.name === "AbortError" || error.cause === request.signal.reason)));
+        if (!cancelled) this.callbackFailure ??= { error };
+        throw error;
+        }
+      });
+      return this.operation<null>("route.fake", { ...pattern, callback });
+    }
+    const responses: readonly FakeResponse[] = "length" in response ? response : [response];
+    return this.operation<null>("route.fake", {
+      ...pattern,
+      responses: responses.map(encodeRouteResponse),
+    });
   }
 
   private routeActions(pattern: ReturnType<typeof routePattern>) {
@@ -135,13 +163,7 @@ export class Laravel {
           release: () => this.operation("route.mock.release", { gate }),
         };
       },
-      fault: (response: FaultResponse) =>
-        this.operation("route.fault", { ...pattern, response: encodeRouteResponse(response) }),
     };
-  }
-
-  fault(target: FaultTarget, response: FaultResponse) {
-    return this.routeActions(routePattern(target, this.origin)).fault(response);
   }
 
   private async installRouteMocks(context: BrowserContext) {

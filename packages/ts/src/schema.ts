@@ -1,5 +1,5 @@
 import type { RehearsalSchema } from "./index.js";
-import type { RouteTarget } from "./routes.js";
+import type { FakeCallback, FakeMethod, FakeResponse, FakeRoute } from "./routes.js";
 
 export const rehearsalModel: unique symbol = Symbol.for("rehearsal.model");
 
@@ -117,7 +117,22 @@ export type OperationOutput<K extends OperationName> = Operations[K]["output"];
 export type ArtisanName = keyof Artisan & string;
 export type ArtisanInput<K extends ArtisanName> = Artisan[K];
 export type ScheduleName = Schema<"schedules", string>;
-type FaultPath = Schema<"faultPaths", string>;
-export type FaultTarget = FaultPath | { url: FaultPath; method: string };
-export type FaultArguments<T extends RouteTarget, Response> = [T] extends [FaultTarget] ? [response: Response] : [response: never];
+type FakeRoutes = Schema<"fakeRoutes", Record<`${FakeMethod} /${string}`, unknown>>;
+export type FakeRouteKey = keyof FakeRoutes & string;
+export type FakeTarget = FakeRouteKey | FakeRoute;
+type ExpandWildcards<Path extends string> =
+  Path extends `${infer Left}*${infer Right}` ? `${Left}${string}${ExpandWildcards<Right>}` : Path;
+type PathAtOrigin<Url extends string> =
+  Url extends `${"http" | "https"}://${string}/${infer Path}` ? `/${Path}` : Url;
+type MatchingRouteKeys<Method extends string, Url extends string, Key extends FakeRouteKey = FakeRouteKey> =
+  Key extends `${Uppercase<Method>} ${infer Pattern}`
+    ? PathAtOrigin<Url> extends ExpandWildcards<Pattern> | `${ExpandWildcards<Pattern>}?${string}` ? Key : never
+    : never;
+type FakePayload<Json> = FakeResponse<Json> | readonly FakeResponse<Json>[] | FakeCallback<Json>;
+export type FakeArguments<T extends FakeTarget> =
+  T extends FakeRouteKey ? [response: FakePayload<FakeRoutes[T]>]
+    : T extends FakeRoute ? string extends T["url"] ? [response: FakePayload<unknown>]
+      : [MatchingRouteKeys<T["method"], T["url"]>] extends [never] ? [response: never]
+        : [response: FakePayload<FakeRoutes[MatchingRouteKeys<T["method"], T["url"]>]>]
+      : never;
 export type InputArguments<T> = {} extends T ? [input?: T] : [input: T];

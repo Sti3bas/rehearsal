@@ -1,4 +1,5 @@
 import { readFileSync, statSync } from "node:fs";
+import { setTimeout as sleep } from "node:timers/promises";
 import type { APIRequestContext } from "@playwright/test";
 import { describe, expect, it, vi } from "vitest";
 import { Laravel, startAttempt } from "../src/client.js";
@@ -8,6 +9,97 @@ import { loopback } from "../src/transport.js";
 import { typesenseInstantSearch } from "../src/typesense.js";
 
 describe("client", () => {
+  it("lets a Laravel callback claimed before clearFakes pass through", async () => {
+    const post = vi.fn().mockResolvedValue({ ok: () => true, json: async () => ({ data: null }) });
+    const client = new Laravel("http://127.0.0.1:8100", { post } as unknown as APIRequestContext, "cap", "attempt");
+    const handler = vi.fn(() => ({ status: 503 }));
+    await client.fake("GET /state", handler);
+    const { port, token, id } = post.mock.calls[0][1].data.data.callback;
+    await client.clearFakes();
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/_rehearsal/fake`, {
+        method: "POST", headers: { "x-rehearsal-fake": token },
+        body: JSON.stringify({ id, url: "http://127.0.0.1:8100/state", method: "GET", headers: [] }),
+      });
+      expect(response.ok).toBe(true);
+      expect(await response.json()).toBeNull();
+      expect(handler).not.toHaveBeenCalled();
+    } finally {
+      await client.disposeFakes();
+    }
+  });
+
+  it("fails fixture teardown with the original Laravel fake callback error", async () => {
+    const post = vi.fn().mockResolvedValue({ ok: () => true, json: async () => ({ data: null }) });
+    const client = new Laravel("http://127.0.0.1:8100", { post } as unknown as APIRequestContext, "cap", "attempt");
+    const error = new Error("callback assertion failed");
+    await client.fake("GET /state", () => { throw error; });
+    const { port, token, id } = post.mock.calls[0][1].data.data.callback;
+    const response = await fetch(`http://127.0.0.1:${port}/_rehearsal/fake`, {
+      method: "POST", headers: { "x-rehearsal-fake": token },
+      body: JSON.stringify({ id, url: "http://127.0.0.1:8100/state", method: "GET", headers: [] }),
+    });
+    expect(response.status).toBe(500);
+    await expect(client.disposeFakes()).rejects.toBe(error);
+  });
+
+  it("waits for a disconnected Laravel callback before checking teardown errors", async () => {
+    const post = vi.fn().mockResolvedValue({ ok: () => true, json: async () => ({ data: null }) });
+    const client = new Laravel("http://127.0.0.1:8100", { post } as unknown as APIRequestContext, "cap", "attempt");
+    const error = new Error("late callback assertion");
+    let started!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>((resolve) => { started = resolve; });
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    await client.fake("GET /state", async () => {
+      started();
+      await blocked;
+      throw error;
+    });
+    const { port, token, id } = post.mock.calls[0][1].data.data.callback;
+    const controller = new AbortController();
+    const pending = fetch(`http://127.0.0.1:${port}/_rehearsal/fake`, {
+      method: "POST", headers: { "x-rehearsal-fake": token }, signal: controller.signal,
+      body: JSON.stringify({ id, url: "http://127.0.0.1:8100/state", method: "GET", headers: [] }),
+    }).catch(() => {});
+    await entered;
+    controller.abort();
+    await pending;
+    const teardown = expect(client.disposeFakes()).rejects.toBe(error);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    release();
+    await teardown;
+  });
+
+  it.each([true, false])("bounds Laravel fake shutdown when the callback observes cancellation: %s", async (observesCancellation) => {
+    const post = vi.fn().mockResolvedValue({ ok: () => true, json: async () => ({ data: null }) });
+    const client = new Laravel("http://127.0.0.1:8100", { post } as unknown as APIRequestContext, "cap", "attempt");
+    let started!: (request: Request) => void;
+    const entered = new Promise<Request>((resolve) => { started = resolve; });
+    await client.fake("GET /state", async (request) => {
+      started(request);
+      if (observesCancellation) await sleep(10_000, undefined, { signal: request.signal });
+      else await new Promise(() => {});
+      return { status: 200 };
+    });
+    const { port, token, id } = post.mock.calls[0][1].data.data.callback;
+    const controller = new AbortController();
+    const pending = fetch(`http://127.0.0.1:${port}/_rehearsal/fake`, {
+      method: "POST", headers: { "x-rehearsal-fake": token }, signal: controller.signal,
+      body: JSON.stringify({ id, url: "http://127.0.0.1:8100/state", method: "GET", headers: [] }),
+    }).catch(() => {});
+    const request = await entered;
+    if (!observesCancellation) {
+      controller.abort();
+      await pending;
+    }
+    const teardown = client.disposeFakes();
+    if (observesCancellation) await expect(teardown).resolves.toBeUndefined();
+    else await expect(teardown).rejects.toThrow("fake callbacks did not stop");
+    await pending;
+    expect(request.signal.aborted).toBe(true);
+  });
+
   it("starts a slot with a capability, then batches factory items once in order", async () => {
     const post = vi.fn()
       .mockResolvedValueOnce({ ok: () => true, json: async () => ({ marker: "attempt", resetMs: {} }) })
@@ -19,7 +111,7 @@ describe("client", () => {
     const batch = [{ model: "User", attrs: { name: "Ada" } }, { model: "User", count: 1, states: ["staff"] }];
     expect(await client.factory(batch)).toEqual([{ name: "Ada" }, [{ name: "Grace" }]]);
     expect(post).toHaveBeenCalledTimes(2);
-    expect(post).toHaveBeenNthCalledWith(1, backend + "/_rehearsal/start", expect.objectContaining({ data: { protocol: 1, slot: 4 } }));
+    expect(post).toHaveBeenNthCalledWith(1, backend + "/_rehearsal/start", expect.objectContaining({ data: { protocol: 2, slot: 4 } }));
     expect(post).toHaveBeenNthCalledWith(2, backend + "/_rehearsal/call", expect.objectContaining({
       headers: expect.objectContaining({ "X-Rehearsal-Attempt": "attempt", "X-Rehearsal-Capability": "cap" }),
       data: { name: "factory", data: { items: batch } },
