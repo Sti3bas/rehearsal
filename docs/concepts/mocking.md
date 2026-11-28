@@ -56,6 +56,8 @@ Unmatched browser requests use normal browser routing. Only same-origin document
 
 Fakes belong to the fixture's Playwright page and SSR requests made by that page. `page.request`, `context.request`, and standalone `APIRequestContext` requests bypass Playwright page routing, so they do not get these fakes or transmit the SSR context. For SSR, a test-only header identifies the worker's loopback handler; Nitro removes it before calling application code, and never forwards it to the original destination. Rules are cleared between tests or manually with `nuxt.clearFakes()`. This proxy-back uses standard server-side fetch on Node/Nitro 2; requests made outside the browser's test context run normally.
 
+Service workers can bypass Playwright's page routes. If your app registers a service worker, set `use: { serviceWorkers: "block" }` in the Playwright project that uses browser fakes. Leave service workers enabled in a separate project when testing the worker itself.
+
 Playwright page routing handles only the first request in a browser redirect chain. To test SSR fakes on a redirect destination, navigate directly to that URL; if the request reaches Laravel, a Laravel route fake also works across redirects.
 
 Use `nuxt.hold()` to pause matching browser or SSR requests before they hit the real destination. The returned handler counts arrivals and lets the requests pass through when released. Release SSR requests before the proxy's 10-second timeout.
