@@ -150,7 +150,12 @@ final class TypesCommand extends Command
                 $output[$attribute] = $this->phpType($type);
             }
         }
-        $filters = $columnNames === null ? array_diff_key($output, $appends) : array_intersect_key($output, array_flip($columnNames));
+        $filterColumns = $columnNames ?? array_values(array_filter(
+            array_keys(array_diff_key($attributes, $appends)),
+            fn (string $attribute) => array_key_exists($attribute, $defaults)
+                || (! $model->hasGetMutator($attribute) && ! $this->hasAttributeMutator($model, $attribute)),
+        ));
+        $filters = array_intersect_key($output, array_flip($filterColumns));
         $output = array_diff_key($output, array_flip($model->getHidden()));
         if ($model->getVisible() !== []) {
             $output = array_intersect_key($output, array_flip($model->getVisible()));
@@ -175,7 +180,7 @@ final class TypesCommand extends Command
             'model' => $this->shape($required, array_diff_key($output, $required)),
             'modelFilters' => $this->shape([], $filters),
             ...($factoryRequired === [] ? [] : ['factoryRequired' => $this->literals(array_keys($factoryRequired))]),
-            ...($columnNames === null && $appends === [] ? [] : ['modelColumns' => $this->literals($columnNames ?? array_keys($filters))]),
+            'modelColumns' => $this->literals($filterColumns),
             'states' => $this->shape($stateShapes),
             'relations' => $this->shape(array_map($this->literal(...), $definition['relations'] ?? [])),
         ]);

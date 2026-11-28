@@ -96,6 +96,11 @@ it('emits the public allowlists and best-effort model and operation types', func
         $this->artisan('rehearsal:types', ['path' => $path, '--database' => 'rehearsal_types_empty'])->assertSuccessful();
         $withoutColumns = explode('"states":', explode('"LongArrayListing": {', file_get_contents($path), 2)[1], 2)[0];
         expect($withoutColumns)->toContain('"sku"?: unknown;')->not->toContain('"factoryRequired"');
+        $withoutColumns = explode('"states":', explode('"AppendedListing": {', file_get_contents($path), 2)[1], 2)[0];
+        [, $withoutColumns] = explode('"model":', $withoutColumns, 2);
+        [$model, $columns] = explode('"modelColumns":', $withoutColumns, 2);
+        expect($model)->toContain('"editorial_label"?: string;');
+        expect($columns)->not->toContain('"editorial_label"', '"display_title"');
     } finally {
         if (is_file($path)) {
             unlink($path);
@@ -173,6 +178,7 @@ final class TypeTestLongArrayListingFactory extends Factory
     }
 }
 
+/** @property-read string $editorial_label */
 final class TypeTestAppendedListing extends Model
 {
     protected $table = 'listings';
@@ -187,6 +193,11 @@ final class TypeTestAppendedListing extends Model
             get: fn (mixed $value, array $attributes): string => strtoupper($attributes['title']),
             set: fn (string $value): array => ['title' => $value],
         );
+    }
+
+    public function getEditorialLabelAttribute(): string
+    {
+        return 'Editor’s pick';
     }
 }
 
