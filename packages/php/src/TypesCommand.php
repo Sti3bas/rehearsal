@@ -131,10 +131,13 @@ final class TypesCommand extends Command
         }
 
         $input = $attributes + array_fill_keys($definitionKeys, 'unknown');
-        $output = $attributes;
+        $appends = array_fill_keys($model->getAppends(), 'unknown');
+        $output = $attributes + $appends;
         foreach ($definitionKeys as $attribute) {
-            if (($columnNames !== null && ! in_array($attribute, $columnNames, true))
-                || ($columnNames === null && ! array_key_exists($attribute, $defaults) && $this->hasAttributeMutator($model, $attribute))) {
+            if (! isset($appends[$attribute]) && (
+                ($columnNames !== null && ! in_array($attribute, $columnNames, true))
+                || ($columnNames === null && ! array_key_exists($attribute, $defaults) && $this->hasAttributeMutator($model, $attribute))
+            )) {
                 unset($output[$attribute]);
             }
         }
@@ -147,7 +150,7 @@ final class TypesCommand extends Command
                 $output[$attribute] = $this->phpType($type);
             }
         }
-        $filters = $columnNames === null ? $output : array_intersect_key($output, array_flip($columnNames));
+        $filters = $columnNames === null ? array_diff_key($output, $appends) : array_intersect_key($output, array_flip($columnNames));
         $output = array_diff_key($output, array_flip($model->getHidden()));
         if ($model->getVisible() !== []) {
             $output = array_intersect_key($output, array_flip($model->getVisible()));
@@ -172,7 +175,7 @@ final class TypesCommand extends Command
             'model' => $this->shape($required, array_diff_key($output, $required)),
             'modelFilters' => $this->shape([], $filters),
             ...($factoryRequired === [] ? [] : ['factoryRequired' => $this->literals(array_keys($factoryRequired))]),
-            ...($columnNames === null ? [] : ['modelColumns' => $this->literals($columnNames)]),
+            ...($columnNames === null && $appends === [] ? [] : ['modelColumns' => $this->literals($columnNames ?? array_keys($filters))]),
             'states' => $this->shape($stateShapes),
             'relations' => $this->shape(array_map($this->literal(...), $definition['relations'] ?? [])),
         ]);

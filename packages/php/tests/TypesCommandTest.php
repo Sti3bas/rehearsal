@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -25,6 +26,9 @@ it('emits the public allowlists and best-effort model and operation types', func
         ], 'LongArrayListing' => [
             'model' => TypeTestListing::class,
             'factory' => TypeTestLongArrayListingFactory::class,
+        ], 'AppendedListing' => [
+            'model' => TypeTestAppendedListing::class,
+            'factory' => TypeTestAppendedListingFactory::class,
         ]],
         'rehearsal.artisan' => ['reindex' => ['rules' => ['force' => 'boolean'], 'fixed' => ['secret' => 'not exported']]],
         'rehearsal.fault_paths' => ['/listings/**'],
@@ -48,6 +52,8 @@ it('emits the public allowlists and best-effort model and operation types', func
         ->and($row->newQuery()->where('published_at', $row->getRawOriginal('published_at'))->exists())->toBeTrue();
     $this->app->register(ServiceProvider::class);
     expect((new TypeTestListing)->forceFill(['display_title' => 'Chair'])->toArray())->toBe(['title' => 'Chair']);
+    expect((new TypeTestAppendedListing)->forceFill(['display_title' => 'Chair'])->toArray())
+        ->toBe(['title' => 'Chair', 'display_title' => 'CHAIR']);
     app(Operations::class)->register('listing.mark', ['id' => 'required|integer', 'note' => 'nullable|string'], static fn (): ?string => null);
     app(Operations::class)->register('listing.partial', [], static fn (): TypeTestListing => (new TypeTestListing)->forceFill(['id' => 1]));
     $path = sys_get_temp_dir().'/rehearsal-types-'.bin2hex(random_bytes(8)).'.d.ts';
@@ -57,6 +63,7 @@ it('emits the public allowlists and best-effort model and operation types', func
         $listing = explode('"states":', explode('"Listing": {', $contents, 2)[1], 2)[0];
         $dynamic = explode('"states":', explode('"DynamicListing": {', $contents, 2)[1], 2)[0];
         $longArray = explode('"states":', explode('"LongArrayListing": {', $contents, 2)[1], 2)[0];
+        $appended = explode('"states":', explode('"AppendedListing": {', $contents, 2)[1], 2)[0];
         [$input, $output] = explode('"model":', $listing, 2);
         [$model, $filters] = explode('"modelFilters":', $output, 2);
         expect($contents)
@@ -79,6 +86,11 @@ it('emits the public allowlists and best-effort model and operation types', func
         expect($filters)->toContain('"published_at"?: string | null;')->not->toContain('"published_at"?: number | null;');
         expect($dynamic)->not->toContain('"factoryRequired"');
         expect($longArray)->toContain('"factoryRequired": "sku";');
+        [, $appendedOutput] = explode('"model":', $appended, 2);
+        [$appendedModel, $appendedFilters] = explode('"modelFilters":', $appendedOutput, 2);
+        expect($appendedModel)->toContain('"display_title"?: unknown;')->not->toContain('"private_label"');
+        expect($appendedFilters)->not->toContain('"display_title"', '"private_label"');
+        expect($appended)->not->toContain('"factoryRequired"');
     } finally {
         if (is_file($path)) {
             unlink($path);
@@ -153,5 +165,30 @@ final class TypeTestLongArrayListingFactory extends Factory
         return array(
             'sku' => fake()->randomElement(array('A', 'B')),
         );
+    }
+}
+
+final class TypeTestAppendedListing extends Model
+{
+    protected $table = 'listings';
+
+    protected $appends = ['display_title', 'private_label'];
+
+    protected $hidden = ['private_label'];
+
+    protected function displayTitle(): Attribute
+    {
+        return Attribute::make(
+            get: fn (mixed $value, array $attributes): string => strtoupper($attributes['title']),
+            set: fn (string $value): array => ['title' => $value],
+        );
+    }
+}
+
+final class TypeTestAppendedListingFactory extends Factory
+{
+    public function definition(): array
+    {
+        return ['display_title' => 'Chair'];
     }
 }
