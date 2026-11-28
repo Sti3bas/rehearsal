@@ -7,13 +7,23 @@ export function nuxtRelayStatus(enabled: unknown, handler: unknown): NuxtRelaySt
   return typeof handler === "function" ? "ready" : "unsupported";
 }
 
-export async function checkNuxtRelay(frontend: URL, fetcher = fetch) {
+function nuxtMounts(frontend: URL, base?: string) {
+  if (base !== undefined) {
+    if (!/^\/(?!\/)[^?#\\]*$/.test(base)) {
+      throw new Error('Rehearsal nuxtBase must be an absolute URL path, such as "/" or "/store/".');
+    }
+    return [base.replace(/\/+$/, "")];
+  }
   const mounts = [];
   for (let path = frontend.pathname.replace(/\/+$/, ""); path; path = path.slice(0, path.lastIndexOf("/"))) {
     mounts.push(path);
   }
   mounts.push("");
+  return mounts;
+}
 
+export async function checkNuxtRelay(frontend: URL, fetcher = fetch, base?: string) {
+  const mounts = nuxtMounts(frontend, base);
   const url = new URL(frontend);
   url.search = "";
   url.hash = "";
@@ -38,5 +48,5 @@ export async function checkNuxtRelay(frontend: URL, fetcher = fetch) {
     }
     checked.push(`${endpoint} (HTTP ${response.status})`);
   }
-  throw new Error(`No Rehearsal Nuxt module readiness response at ${checked.join(", ")}. Add "@sti3bas/rehearsal/nuxt" to nuxt.config and rebuild or restart Nuxt; check nuxtURL/baseURL and update the npm package if needed.`);
+  throw new Error(`No Rehearsal Nuxt module readiness response at ${checked.join(", ")}. Add "@sti3bas/rehearsal/nuxt" to nuxt.config and rebuild or restart Nuxt; check nuxtURL/baseURL, set nuxtBase for a custom app mount, and update the npm package if needed.`);
 }

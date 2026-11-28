@@ -94,12 +94,13 @@ export const reverbTest = test.extend<{ reverb: Reverb }>({
     }),
 });
 
-export const nuxtTest = base.extend<{ nuxt: NuxtFakes; nuxtURL?: string }>({
+export const nuxtTest = base.extend<{ nuxt: NuxtFakes; nuxtURL?: string; nuxtBase?: string }>({
   nuxtURL: [undefined, { option: true }],
-  nuxt: async ({ page, baseURL, nuxtURL }, use) => {
+  nuxtBase: [undefined, { option: true }],
+  nuxt: async ({ page, baseURL, nuxtURL, nuxtBase }, use) => {
     const frontend = nuxtURL ?? baseURL;
     if (!frontend) throw new Error("Rehearsal Nuxt fakes require baseURL or nuxtURL.");
-    const nuxt = new NuxtFakes(page, frontend);
+    const nuxt = new NuxtFakes(page, frontend, nuxtBase);
     try {
       await use(nuxt);
     } finally {

@@ -129,6 +129,8 @@ With the module enabled on a Node Nitro 2 server, a route such as `server/api/si
 
 With the module installed and `NUXT_REHEARSAL_ENABLED=true` on the loopback Nuxt server, merge the fixtures with `mergeTests(test, nuxtTest)`. The Nuxt fixture uses the frontend `baseURL` by default; set the `nuxtURL` test option if your `baseURL` points to Laravel.
 
+The SSR readiness check tries the configured frontend path and its ancestors, from most specific to root. For an unusual mount, set `nuxtBase` to your Nuxt app's base path in Playwright's `use` options (or call `browserTest.use({ nuxtBase: "/store/" })`). That probes only `/store/_rehearsal/nuxt/ready` at the frontend origin. Use `nuxtBase: "/"` to force the root.
+
 ```ts
 import { mergeTests } from "@playwright/test";
 import { nuxtTest, test } from "@sti3bas/rehearsal";

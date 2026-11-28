@@ -40,7 +40,7 @@ export class NuxtFakes {
   private routePattern = /^https?:\/\//;
   private frontend: URL;
 
-  constructor(private page: Page, frontend: string) {
+  constructor(private page: Page, frontend: string, private base?: string) {
     this.frontend = new URL(frontend);
     if (!loopback(this.frontend)) throw new Error("Rehearsal Nuxt fakes require a loopback frontend URL.");
   }
@@ -151,7 +151,7 @@ export class NuxtFakes {
   }
 
   private async startSSR() {
-    await checkNuxtRelay(this.frontend);
+    await checkNuxtRelay(this.frontend, fetch, this.base);
     return this.bridge.register(async (request) => {
       const rule = this.match(request.method, new URL(request.url), true);
       return rule ? this.resolve(rule, request) : null;

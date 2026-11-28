@@ -50,6 +50,12 @@ describe("Nuxt SSR readiness", () => {
     ]);
   });
 
+  it("probes only the explicit mount, even if that endpoint is missing", async () => {
+    const fetcher = vi.fn(async () => new Response(null, { status: 404 }));
+    await expect(checkNuxtRelay(new URL("/elsewhere", frontend), fetcher, "/store/")).rejects.toThrow("HTTP 404");
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith(new URL("/store/_rehearsal/nuxt/ready", frontend), expect.anything());
+  });
+
   it.each(["/store", "/store/", "/store/?ignored=1#fragment", "/store/en/home"])("finds a Nuxt mount under %s", async (base) => {
     const endpoint = new URL("/store/_rehearsal/nuxt/ready", frontend);
     const fetcher = vi.fn(async (url: URL) =>
