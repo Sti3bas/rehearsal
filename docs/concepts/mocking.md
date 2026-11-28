@@ -43,6 +43,8 @@ Keys are HTTP methods plus absolute URLs. A `*` matches any string; the query is
 
 Fakes belong to the fixture's Playwright page and SSR requests made by that page. `page.request`, `context.request`, and standalone `APIRequestContext` requests bypass Playwright page routing, so they do not get these fakes or transmit the SSR context. For SSR, a test-only header identifies the worker's loopback handler; Nitro removes it before calling application code, and never forwards it to the original destination. Rules are cleared between tests or manually with `nuxt.clearFakes()`. This proxy-back uses standard server-side fetch on Node/Nitro 2; requests made outside the browser's test context run normally.
 
+Playwright page routing handles only the first request in a browser redirect chain. To test SSR fakes on a redirect destination, navigate directly to that URL; if the request reaches Laravel, a Laravel route fake also works across redirects.
+
 `pause()` lets matched requests continue to Laravel after `release()`; with a response it returns that response instead. `waitForRequest({ timeout: 5000 })` waits until the first match (five seconds by default). Clearing a mock removes future matches, but does not release requests already waiting on its gate.
 
 Set `rehearsal.route_mocks` to `false` to disable browser and SSR response mocks and their resolution route. The browser login route is only installed when login is configured, and the Typesense credential route is only installed when the Scout integration is configured for Typesense.

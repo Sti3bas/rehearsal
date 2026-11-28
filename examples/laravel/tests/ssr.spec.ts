@@ -12,11 +12,13 @@ nuxt("matches Nuxt fake root URLs without a trailing slash", async ({ nuxt, page
   expect(await (await page.goto(baseURL! + "/state"))?.text()).toBe("Fake wildcard");
 });
 
-nuxt("keeps fakes on a same-origin Nuxt redirect", async ({ nuxt, page, baseURL, nuxtURL }) => {
+nuxt("leaves Nuxt redirects to the browser and fakes direct navigations", async ({ nuxt, page, baseURL, nuxtURL }) => {
   await nuxt.fake({ [`GET ${baseURL}/state`]: { json: { users: ["Redirected"] } } });
-  const response = await page.goto(nuxtURL + "/api/fake-redirect");
+  const response = await page.goto(nuxtURL + "/api/fake-redirect", { waitUntil: "commit" });
   expect(page.url()).toBe(nuxtURL + "/api/state");
-  expect((await response!.json()).global.users).toEqual(["Redirected"]);
+  expect(response!.request().redirectedFrom()?.url()).toBe(nuxtURL + "/api/fake-redirect");
+  expect((await response!.json()).global.users).toEqual(["Baseline"]);
+  expect((await (await page.goto(nuxtURL + "/api/state"))!.json()).global.users).toEqual(["Redirected"]);
 });
 
 for (const name of ["Ada", "Grace"]) {
