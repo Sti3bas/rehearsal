@@ -7,6 +7,12 @@ import { expect, laravelServer, test } from "@sti3bas/rehearsal";
 
 const collision = "same-address@example.test";
 
+test("reads the attempt user without a browser context", async ({ laravel }) => {
+  await expect(laravel.user()).resolves.toBeNull();
+  await laravel.fake("GET /api/user", { json: { name: "Attempt user" } });
+  await expect(laravel.user()).resolves.toEqual({ name: "Attempt user" });
+});
+
 test("uses the managed rehearsal environment and forwards Laravel env values", async ({ page }) => {
   const response = await page.request.get("/probe/environment");
   expect(await response.json()).toEqual({ environment: "rehearsal", name: "Managed Rehearsal" });

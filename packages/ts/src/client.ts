@@ -69,6 +69,7 @@ export class Laravel {
     private frontendOrigin = origin,
     private metadata: Record<string, unknown> = {},
     private userEndpoint = "/api/user",
+    private userRequest = request,
   ) {}
 
   integrationMetadata(name: string): unknown {
@@ -244,16 +245,16 @@ export class Laravel {
   async user<T = unknown>({
     context = this.context, endpoint = this.userEndpoint, frontendOrigin = this.frontendOrigin,
   }: { context?: BrowserContext; endpoint?: string; frontendOrigin?: string } = {}): Promise<T | null> {
-    if (!context) throw new Error("Rehearsal user requires a browser context fixture.");
     const target = new URL(endpoint, this.origin);
-    if (target.origin !== this.origin || target.username || target.password) {
+    if (!loopback(target) || target.origin !== this.origin || target.username || target.password) {
       throw new Error("Rehearsal user requires an endpoint at the Laravel origin.");
     }
     const frontend = new URL(frontendOrigin);
     if (!loopback(frontend)) throw new Error("Rehearsal user requires a loopback frontend origin.");
-    if (!this.contexts.has(context)) await this.bindContext(context);
-    const response = await context.request.get(target.href, {
-      headers: { Accept: "application/json", Origin: frontend.origin }, maxRedirects: 0,
+    if (context && !this.contexts.has(context)) await this.bindContext(context);
+    const response = await (context?.request ?? this.userRequest).get(target.href, {
+      headers: { Accept: "application/json", Origin: frontend.origin, ...(context ? {} : { [markerHeader]: this.marker }) },
+      maxRedirects: 0,
     });
     try {
       if (response.status() === 401) return null;

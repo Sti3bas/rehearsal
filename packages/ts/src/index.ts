@@ -52,11 +52,11 @@ export const test = base.extend<{ laravel: Laravel; newBrowser: NewBrowser; rehe
       await request.dispose();
     }
   }, { scope: "worker" }],
-  laravel: [async ({ rehearsalRun, baseURL, rehearsalUserEndpoint }, use, testInfo) => {
+  laravel: [async ({ rehearsalRun, baseURL, rehearsalUserEndpoint, request: userRequest }, use, testInfo) => {
     const { request, origin, capability, slot } = rehearsalRun;
     const attempt = await startAttempt(request, origin, capability, slot);
     await testInfo.attach("rehearsal-reset", { body: JSON.stringify(attempt.resetMs), contentType: "application/json" });
-    const laravel = new Laravel(origin, request, capability, attempt.marker, baseURL ? new URL(baseURL).origin : origin, attempt.client, rehearsalUserEndpoint);
+    const laravel = new Laravel(origin, request, capability, attempt.marker, baseURL ? new URL(baseURL).origin : origin, attempt.client, rehearsalUserEndpoint, userRequest);
     try {
       await use(laravel);
     } finally {
