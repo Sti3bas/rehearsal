@@ -5,7 +5,10 @@ import { capabilityHeader, loopback, markerHeader } from "./transport.js";
 
 export const passthrough = Symbol("rehearsal.nuxt.passthrough");
 export type NuxtFakePattern = `${FakeMethod} ${"http" | "https"}://${string}`;
-export type NuxtFakeResponse<Json = unknown> = (FakeResponse<Json> & { once?: never; times?: never }) | typeof passthrough;
+export type NuxtFakeResponse<Json = unknown> =
+  | (FakeResponse<Json> & { once?: never; times?: never; networkError?: false })
+  | { networkError: true; delay?: number; status?: never; headers?: never; body?: never; json?: never; once?: never; times?: never }
+  | typeof passthrough;
 export type NuxtFakeHandler<Json = unknown> = (request: Request) => NuxtFakeResponse<Json> | Promise<NuxtFakeResponse<Json>>;
 export type NuxtFakeRule<Json = unknown> = NuxtFakeResponse<Json> | readonly NuxtFakeResponse<Json>[] | NuxtFakeHandler<Json>;
 export type NuxtFakeRules = Partial<Record<NuxtFakePattern, NuxtFakeRule>>;
@@ -156,11 +159,13 @@ export class NuxtFakes {
       }));
       if (reply) {
         if (reply.delay) await wait(reply.delay);
+        if (reply.networkError) return route.abort();
         const { status, headers: responseHeaders, body } = mockResponse(reply);
         return route.fulfill({ status, headers: Object.fromEntries(responseHeaders), body });
       }
     }
-    if (url.origin !== this.frontend.origin || !this.rules.length) return route.fallback();
+    if (url.origin !== this.frontend.origin || !this.rules.length ||
+      ["script", "stylesheet", "font", "eventsource"].includes(request.resourceType())) return route.fallback();
     const { port, token, id } = await this.connection!;
     headers.set(fakeBridgeHeader, [port, token, id].join("."));
     const response = await route.fetch({ headers: Object.fromEntries(headers), maxRedirects: 0 });

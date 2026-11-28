@@ -5,6 +5,12 @@ import { proxyNuxtFetch } from "../src/nuxt-proxy.js";
 const context = { port: 1234, token: "bridge", id: "test" };
 
 describe("Nuxt fake proxy", () => {
+  it("rejects a network-error reply instead of returning an HTTP response", async () => {
+    const fetch = vi.fn(async () => Response.json({ networkError: true }));
+    await expect(proxyNuxtFetch(fetch, context, "https://example.test/feed")).rejects.toThrow(TypeError);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("only sends the body when the matched callback needs one", async () => {
     const bridge = new FakeBridge();
     try {
