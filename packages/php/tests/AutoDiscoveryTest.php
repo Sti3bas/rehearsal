@@ -273,7 +273,7 @@ PHP);
             'rehearsal.reverb.origin' => 'http://127.0.0.1:18080',
             'rehearsal.queues' => null,
             'rehearsal.artisan' => ['discover' => true],
-            'rehearsal.fake_routes' => ['discover' => true],
+            'rehearsal.fake_routes' => ['discover' => true, 'GET /api/allowed/'],
             'rehearsal.factories' => ['discover' => false],
             'rehearsal.operations' => ['discover' => false],
             'horizon.defaults' => ['sup-1' => ['queue' => ['high', 'default']]],
@@ -283,6 +283,8 @@ PHP);
 
         expect(\Sti3bas\Rehearsal\FakeRoutes::keys())->toContain('GET /api/files/**');
         expect(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/api/files/folder/item'))->toBeTrue();
+        expect(\Sti3bas\Rehearsal\FakeRoutes::keys())->toContain('GET /api/allowed');
+        expect(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/api/allowed/'))->toBeTrue();
 
         expect(\Sti3bas\Rehearsal\Callbacks::all())
             ->toHaveKey('/webhooks/demo', $ns.'\\StaticCallback')

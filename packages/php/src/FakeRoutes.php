@@ -31,7 +31,7 @@ final class FakeRoutes
                 foreach (array_intersect($route->methods(), self::METHODS) as $method) {
                     foreach ($paths as $path) {
                         if (self::applicationPath($path)) {
-                            $keys[] = "$method $path";
+                            $keys[] = $method.' '.self::normalize($path);
                         }
                     }
                 }
@@ -44,7 +44,7 @@ final class FakeRoutes
             [$method, $path] = str_starts_with($route, '/') ? [null, $route] : array_pad(explode(' ', $route, 2), 2, '');
             if (self::applicationPath($path)) {
                 foreach ($method === null ? self::METHODS : array_intersect([$method], self::METHODS) as $verb) {
-                    $keys[] = "$verb $path";
+                    $keys[] = $verb.' '.self::normalize($path);
                 }
             }
         }
