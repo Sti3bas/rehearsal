@@ -7,7 +7,7 @@ nuxt.use({ nuxtURL: "http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT })
 nuxt.describe("with a Nuxt URL pointing to a page", () => {
   nuxt.use({ nuxtURL: "http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT + "/en/home" });
 
-  nuxt("finds the live relay at the root and intercepts SSR", async ({ nuxt, page, baseURL, nuxtURL }) => {
+  nuxt("falls back to the live root relay and intercepts SSR", async ({ nuxt, page, baseURL, nuxtURL }) => {
     await nuxt.fake({ [`GET ${baseURL}/state`]: { json: { users: ["Found the relay"] } } });
     const response = await page.goto(new URL("/api/state", nuxtURL).href);
     expect((await response!.json()).global.users).toEqual(["Found the relay"]);

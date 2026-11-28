@@ -8,10 +8,11 @@ export function nuxtRelayStatus(enabled: unknown, handler: unknown): NuxtRelaySt
 }
 
 export async function checkNuxtRelay(frontend: URL, fetcher = fetch) {
-  const mounts = [""];
+  const mounts = [];
   for (let path = frontend.pathname.replace(/\/+$/, ""); path; path = path.slice(0, path.lastIndexOf("/"))) {
     mounts.push(path);
   }
+  mounts.push("");
 
   const url = new URL(frontend);
   url.search = "";

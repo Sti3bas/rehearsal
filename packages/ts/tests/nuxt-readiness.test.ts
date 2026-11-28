@@ -19,10 +19,24 @@ describe("Nuxt SSR readiness", () => {
     await expect(checkNuxtRelay(frontend, vi.fn(async () => new Response("<html>SPA fallback</html>")))).rejects.toThrow('Add "@sti3bas/rehearsal/nuxt"');
   });
 
-  it("tries the root mount first even when the configured URL points to a page", async () => {
-    const fetcher = vi.fn(async () => Response.json({ rehearsalNuxt: "ready" }));
+  it("falls back to the root mount when the configured URL points to a page", async () => {
+    const fetcher = vi.fn(async (url: URL) => url.pathname === "/_rehearsal/nuxt/ready"
+      ? Response.json({ rehearsalNuxt: "ready" })
+      : Response.json({ status: "ready" }));
     await checkNuxtRelay(new URL("/en/home", frontend), fetcher);
-    expect(fetcher).toHaveBeenCalledExactlyOnceWith(new URL("/_rehearsal/nuxt/ready", frontend), expect.anything());
+    expect(fetcher.mock.calls.map(([url]) => url.pathname)).toEqual([
+      "/en/home/_rehearsal/nuxt/ready",
+      "/en/_rehearsal/nuxt/ready",
+      "/_rehearsal/nuxt/ready",
+    ]);
+  });
+
+  it("uses the most specific matching mount, even when its relay is disabled", async () => {
+    const fetcher = vi.fn(async (url: URL) => Response.json({
+      rehearsalNuxt: url.pathname.startsWith("/store/") ? "disabled" : "ready",
+    }));
+    await expect(checkNuxtRelay(new URL("/store/", frontend), fetcher)).rejects.toThrow("SSR relay is disabled");
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith(new URL("/store/_rehearsal/nuxt/ready", frontend), expect.anything());
   });
 
   it.each(["/store", "/store/", "/store/?ignored=1#fragment", "/store/en/home"])("finds a Nuxt mount under %s", async (base) => {
