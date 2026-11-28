@@ -128,11 +128,11 @@ export class Laravel {
     const pattern = fakeRoutePattern(target, this.origin);
     if (typeof response === "function") {
       const callback = await this.fakeBridge.register(async (request) => {
-        try {
-          return encodeRouteResponse(await response(request));
-        } catch (error) {
-          this.callbackFailure ??= { error };
-          throw error;
+      try {
+        return encodeRouteResponse(await response(request));
+      } catch (error) {
+        if (!request.signal.aborted || error !== request.signal.reason) this.callbackFailure ??= { error };
+        throw error;
         }
       });
       return this.operation<null>("route.fake", { ...pattern, callback });

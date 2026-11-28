@@ -70,6 +70,30 @@ describe("client", () => {
     await teardown;
   });
 
+  it.each([true, false])("bounds Laravel fake shutdown when the callback observes cancellation: %s", async (observesCancellation) => {
+    const post = vi.fn().mockResolvedValue({ ok: () => true, json: async () => ({ data: null }) });
+    const client = new Laravel("http://127.0.0.1:8100", { post } as unknown as APIRequestContext, "cap", "attempt");
+    let started!: (request: Request) => void;
+    const entered = new Promise<Request>((resolve) => { started = resolve; });
+    await client.fake("GET /state", (request) => new Promise((_, reject) => {
+      if (observesCancellation) request.signal.addEventListener("abort", () => reject(request.signal.reason));
+      started(request);
+    }));
+    const { port, token, id } = post.mock.calls[0][1].data.data.callback;
+    const controller = new AbortController();
+    const pending = fetch(`http://127.0.0.1:${port}/_rehearsal/fake`, {
+      method: "POST", headers: { "x-rehearsal-fake": token }, signal: controller.signal,
+      body: JSON.stringify({ id, url: "http://127.0.0.1:8100/state", method: "GET", headers: [] }),
+    }).catch(() => {});
+    const request = await entered;
+    controller.abort();
+    await pending;
+    const teardown = client.disposeFakes();
+    if (observesCancellation) await expect(teardown).resolves.toBeUndefined();
+    else await expect(teardown).rejects.toThrow("fake callbacks did not stop");
+    expect(request.signal.aborted).toBe(true);
+  });
+
   it("starts a slot with a capability, then batches factory items once in order", async () => {
     const post = vi.fn()
       .mockResolvedValueOnce({ ok: () => true, json: async () => ({ marker: "attempt", resetMs: {} }) })

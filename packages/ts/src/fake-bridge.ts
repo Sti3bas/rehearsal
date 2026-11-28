@@ -39,11 +39,20 @@ export class FakeBridge {
   async close() {
     this.clear();
     if (!this.server) return;
-    this.server.closeAllConnections();
-    await Promise.all([
-      new Promise<void>((resolve) => this.server!.close(() => resolve())),
-      Promise.allSettled(this.active),
-    ]);
+    const server = this.server;
+    const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+    server.closeAllConnections();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.all([closed, Promise.allSettled(this.active)]),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("Rehearsal fake callbacks did not stop after their requests were cancelled.")), 1_000);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private listen() {
@@ -70,7 +79,9 @@ export class FakeBridge {
             outgoing.writeHead(200, { "content-type": "application/json" }).end("null");
             return;
           }
-          const request = new Request(url, { method, headers, body: body === undefined ? undefined : Buffer.from(body, "base64") });
+          const controller = new AbortController();
+          outgoing.once("close", () => { if (!outgoing.writableFinished) controller.abort(); });
+          const request = new Request(url, { method, headers, signal: controller.signal, body: body === undefined ? undefined : Buffer.from(body, "base64") });
           const handlerResult = Promise.resolve().then(() => handler(request));
           this.active.add(handlerResult);
           const value = await handlerResult.finally(() => this.active.delete(handlerResult));
