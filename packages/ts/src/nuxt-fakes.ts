@@ -70,7 +70,11 @@ export class NuxtFakes {
 
   async navigate(page: Page, path: string, options: NuxtNavigationOptions = {}) {
     type Location = { path: string; query?: object; hash?: string; state?: NuxtNavigationOptions["state"] };
-    type Router = { push(to: string | Location): Promise<unknown>; resolve(to: string | Location): Location & { href: string } };
+    type Router = {
+      currentRoute: { value: { fullPath: string } };
+      push(to: string | Location): Promise<unknown>;
+      resolve(to: string | Location): Location & { href: string };
+    };
     type VueRoot = Element & { __vue_app__?: { config: { globalProperties: { $router?: Router } } } };
     const router = await page.waitForFunction(() => {
       const useNuxtApp = (window as Window & {
@@ -84,11 +88,13 @@ export class NuxtFakes {
       const root = (document.getElementById("__nuxt") ?? document.body) as VueRoot;
       return root.__vue_app__?.config.globalProperties.$router;
     });
+    const documentURL = page.url();
     let href: string;
     try {
       href = await router.evaluate(async (router, { path, state }) => {
-        const { path: pathname, query, hash } = router!.resolve(path);
-        const destination = state ? { path: pathname, query, hash, state } : path;
+        const target = path.startsWith("#") ? router!.currentRoute.value.fullPath.split("#", 1)[0] + path : path;
+        const { path: pathname, query, hash } = router!.resolve(target);
+        const destination = state ? { path: pathname, query, hash, state } : target;
         const { href } = router!.resolve(destination);
         await router!.push(destination);
         return href;
@@ -97,7 +103,9 @@ export class NuxtFakes {
       await router.dispose();
     }
     const target = options.expect ?? href;
-    await expect(page).toHaveURL(typeof target === "string" ? new URL(target, this.frontend).href : target);
+    const base = options.expect === undefined || (typeof target === "string" && target.startsWith("#"))
+      ? documentURL : this.frontend;
+    await expect(page).toHaveURL(typeof target === "string" ? new URL(target, base).href : target);
   }
 
   async close() {

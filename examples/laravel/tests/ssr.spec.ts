@@ -125,6 +125,15 @@ for (const name of ["Ada", "Grace"]) {
   });
 }
 
+nuxt("resolves hash-only navigation against the current document", async ({ nuxt, page, nuxtURL }) => {
+  await page.goto(nuxtURL + "/?preview=oak");
+  await nuxt.navigate(page, "#client", { expect: "#client" });
+  await expect(page).toHaveURL(nuxtURL + "/?preview=oak#client");
+  await nuxt.navigate(page, "#next", { state: { probe: "fragment" } });
+  await expect(page).toHaveURL(nuxtURL + "/?preview=oak#next");
+  expect(await page.evaluate(() => history.state.probe)).toBe("fragment");
+});
+
 nuxt("holds SSR and browser requests until released and navigates with router state", async ({ nuxt, page, baseURL, nuxtURL }) => {
   await page.goto(nuxtURL!);
   await expect(page.locator("#rehearsal-example")).toBeVisible();
