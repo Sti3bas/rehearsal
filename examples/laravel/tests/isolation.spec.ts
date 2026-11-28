@@ -13,6 +13,26 @@ test("reads the attempt user without a browser context", async ({ laravel }) => 
   await expect(laravel.user({ endpoint: "/state" })).resolves.toEqual({ name: "Attempt user" });
 });
 
+test("reads the real Sanctum user from the isolated API session", async ({ laravel, newBrowser, request }) => {
+  const { context } = await newBrowser();
+  const attempt = (await context.cookies()).find(({ name }) => name === "rehearsal_attempt")!;
+  const frontendOrigin = "http://127.0.0.1:" + (process.env.REHEARSAL_E2E_NUXT_PORT ?? "8325");
+  const headers = { Accept: "application/json", Origin: frontendOrigin, "X-Rehearsal-Attempt": attempt.value };
+  const name = "API session user";
+  const email = "api-session@example.test";
+  const password = "api-session-password";
+  await laravel.factory("User", { name, email, password });
+  await expect(laravel.user({ frontendOrigin })).resolves.toBeNull();
+
+  const csrf = await request.get("/sanctum/csrf-cookie", { headers });
+  expect(csrf.status()).toBe(204);
+  const cookie = csrf.headersArray().find(({ value }) => value.startsWith("XSRF-TOKEN="))!.value;
+  const token = decodeURIComponent(cookie.split(";")[0].slice("XSRF-TOKEN=".length));
+  const login = await request.post("/login", { headers: { ...headers, "X-XSRF-TOKEN": token }, data: { email, password } });
+  expect(login.status()).toBe(204);
+  await expect(laravel.user({ frontendOrigin })).resolves.toEqual({ name });
+});
+
 test("uses the managed rehearsal environment and forwards Laravel env values", async ({ page }) => {
   const response = await page.request.get("/probe/environment");
   expect(await response.json()).toEqual({ environment: "rehearsal", name: "Managed Rehearsal" });
