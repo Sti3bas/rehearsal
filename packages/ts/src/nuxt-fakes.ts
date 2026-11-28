@@ -73,11 +73,16 @@ export class NuxtFakes {
     type Router = { push(to: string | Location): Promise<unknown>; resolve(to: string | Location): Location & { href: string } };
     type VueRoot = Element & { __vue_app__?: { config: { globalProperties: { $router?: Router } } } };
     const router = await page.waitForFunction(() => {
-      const roots = [document.querySelector("#__nuxt"), document.body, ...document.querySelectorAll("[data-v-app]")];
-      for (const root of roots) {
-        const router = (root as VueRoot | null)?.__vue_app__?.config.globalProperties.$router;
-        if (router) return router;
+      const useNuxtApp = (window as Window & {
+        useNuxtApp?: () => { vueApp: { _container?: Element }; $router?: Router };
+      }).useNuxtApp;
+      try {
+        const app = useNuxtApp?.();
+        if (app?.vueApp._container && app.$router) return app.$router;
+      } catch {
       }
+      const root = (document.getElementById("__nuxt") ?? document.body) as VueRoot;
+      return root.__vue_app__?.config.globalProperties.$router;
     });
     let href: string;
     try {
