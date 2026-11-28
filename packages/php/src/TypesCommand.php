@@ -108,7 +108,8 @@ final class TypesCommand extends Command
         }
         $columnNames = $columns === null ? null : array_column($columns, 'name');
         $attributes[$model->getKeyName()] = $this->phpType($model->getKeyType());
-        preg_match_all('/@property(?:-read|-write)?\s+(\S+)\s+\$(\w+)/', (new \ReflectionClass($model))->getDocComment() ?: '', $properties, PREG_SET_ORDER);
+        preg_match_all('/(@property(?:-read|-write)?)\s+(\S+)\s+\$(\w+)/', (new \ReflectionClass($model))->getDocComment() ?: '', $properties, PREG_SET_ORDER);
+        $fallbackColumns = array_fill_keys([...array_keys($attributes), ...array_keys($model->getCasts())], true);
         $knownCasts = [];
         foreach ($model->getCasts() as $attribute => $cast) {
             [$name, $argument] = array_pad(explode(':', $cast, 2), 2, null);
@@ -141,20 +142,20 @@ final class TypesCommand extends Command
                 unset($output[$attribute]);
             }
         }
-        foreach ($properties as [$annotation, $type, $attribute]) {
-            $writeOnly = str_starts_with($annotation, '@property-write');
-            if ($writeOnly || (! isset($knownCasts[$attribute]) && ! str_starts_with($annotation, '@property-read'))) {
+        foreach ($properties as [, $annotation, $type, $attribute]) {
+            $writeOnly = $annotation === '@property-write';
+            if ($annotation === '@property'
+                || ($annotation === '@property-read' && ($model->hasSetMutator($attribute) || $model->hasAttributeSetMutator($attribute)))) {
+                $fallbackColumns[$attribute] = true;
+            }
+            if ($writeOnly || (! isset($knownCasts[$attribute]) && $annotation !== '@property-read')) {
                 $input[$attribute] = $this->phpType($type);
             }
             if (! $writeOnly && ! isset($knownCasts[$attribute])) {
                 $output[$attribute] = $this->phpType($type);
             }
         }
-        $filterColumns = $columnNames ?? array_values(array_filter(
-            array_keys(array_diff_key($attributes, $appends)),
-            fn (string $attribute) => array_key_exists($attribute, $defaults)
-                || (! $model->hasGetMutator($attribute) && ! $this->hasAttributeMutator($model, $attribute)),
-        ));
+        $filterColumns = $columnNames ?? array_keys(array_diff_key($fallbackColumns, $appends));
         $filters = array_intersect_key($output, array_flip($filterColumns));
         $output = array_diff_key($output, array_flip($model->getHidden()));
         if ($model->getVisible() !== []) {

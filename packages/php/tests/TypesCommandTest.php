@@ -99,8 +99,10 @@ it('emits the public allowlists and best-effort model and operation types', func
         $withoutColumns = explode('"states":', explode('"AppendedListing": {', file_get_contents($path), 2)[1], 2)[0];
         [, $withoutColumns] = explode('"model":', $withoutColumns, 2);
         [$model, $columns] = explode('"modelColumns":', $withoutColumns, 2);
+        preg_match('/"modelFilters": (\{[^}]*\})/', $withoutColumns, $query);
         expect($model)->toContain('"editorial_label"?: string;');
-        expect($columns)->not->toContain('"editorial_label"', '"display_title"');
+        expect($query[1])->toContain('"sku"?: string;', '"title"?: unknown;')->not->toContain('"editorial_label"', '"display_title"');
+        expect(explode(';', $columns, 2)[0])->toContain('"sku"', '"title"')->not->toContain('"editorial_label"', '"display_title"');
     } finally {
         if (is_file($path)) {
             unlink($path);
@@ -178,7 +180,10 @@ final class TypeTestLongArrayListingFactory extends Factory
     }
 }
 
-/** @property-read string $editorial_label */
+/**
+ * @property-read string $editorial_label
+ * @property string $sku
+ */
 final class TypeTestAppendedListing extends Model
 {
     protected $table = 'listings';
@@ -186,6 +191,13 @@ final class TypeTestAppendedListing extends Model
     protected $appends = ['display_title', 'private_label'];
 
     protected $hidden = ['private_label'];
+
+    protected $fillable = ['title'];
+
+    public function getTitleAttribute(string $value): string
+    {
+        return $value;
+    }
 
     protected function displayTitle(): Attribute
     {
