@@ -28,15 +28,20 @@ export async function proxyNuxtFetch(
   headers.delete(markerHeader);
   const wire: WireRequest & { id: string } = {
     id: context.id, url: request.url, method: request.method, headers: Array.from(headers),
-    ...(request.body ? { body: Buffer.from(await request.clone().arrayBuffer()).toString("base64") } : {}),
+    hasBody: request.body !== null,
   };
-  const result = await fetch("http://127.0.0.1:" + context.port + fakeBridgePath, {
+  const send = () => fetch("http://127.0.0.1:" + context.port + fakeBridgePath, {
     method: "POST",
     headers: { [fakeBridgeHeader]: context.token, "content-type": "application/json" },
     body: JSON.stringify(wire),
     redirect: "error",
     signal: AbortSignal.any([request.signal, AbortSignal.timeout(10_000)]),
   });
+  let result = await send();
+  if (result.status === 202) {
+    wire.body = Buffer.from(await request.arrayBuffer()).toString("base64");
+    result = await send();
+  }
   if (!result.ok) throw new Error("Rehearsal Nuxt fake handler failed (HTTP " + result.status + ").");
   const reply = await result.json() as Parameters<typeof mockResponse>[0] | null;
   if (!reply) return null;

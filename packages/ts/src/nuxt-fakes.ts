@@ -14,6 +14,7 @@ interface Rule {
   method: string;
   url: RegExp;
   includesQuery: boolean;
+  needsBody: boolean;
   handler: NuxtFakeHandler;
 }
 
@@ -56,7 +57,7 @@ export class NuxtFakes {
       typeof response !== "symbol" && "length" in response ? response : [response];
     if (!sequence.length && typeof response !== "function") throw new Error("Rehearsal Nuxt fake sequences cannot be empty.");
     return {
-      method, url: new RegExp("^" + pattern + "$"), includesQuery: url.includes("?"),
+      method, url: new RegExp("^" + pattern + "$"), includesQuery: url.includes("?"), needsBody: typeof response === "function",
       handler: typeof response === "function" ? response : () => sequence[Math.min(calls++, sequence.length - 1)]!,
     };
   }
@@ -77,7 +78,7 @@ export class NuxtFakes {
     const connection = await this.bridge.register(async (request) => {
       const rule = this.match(request.method, new URL(request.url));
       return rule ? this.resolve(rule, request) : null;
-    });
+    }, ({ method, url }) => this.match(method, new URL(url))?.needsBody === true);
     await this.page.route(this.routePattern, this.intercept);
     return connection;
   }

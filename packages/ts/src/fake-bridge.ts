@@ -14,20 +14,21 @@ export interface WireRequest {
   method: string;
   headers: [string, string][];
   body?: string;
+  hasBody?: boolean;
 }
 
 export type FakeHandler = (request: Request) => unknown | Promise<unknown>;
 
 export class FakeBridge {
   private token = randomBytes(32).toString("hex");
-  private handlers = new Map<string, FakeHandler>();
+  private handlers = new Map<string, { handler: FakeHandler; needsBody?: (request: WireRequest) => boolean }>();
   private active = new Set<Promise<unknown>>();
   private server?: Server;
   private ready?: Promise<number>;
 
-  async register(handler: FakeHandler) {
+  async register(handler: FakeHandler, needsBody?: (request: WireRequest) => boolean) {
     const id = randomBytes(16).toString("hex");
-    this.handlers.set(id, handler);
+    this.handlers.set(id, { handler, needsBody });
     try {
       return { port: await (this.ready ??= this.listen()), token: this.token, id };
     } catch (error) {
@@ -77,16 +78,21 @@ export class FakeBridge {
             }
             chunks.push(chunk);
           }
-          const { id, url, method, headers, body } = JSON.parse(Buffer.concat(chunks).toString()) as WireRequest & { id: string };
-          const handler = this.handlers.get(id);
-          if (!handler) {
+          const wire = JSON.parse(Buffer.concat(chunks).toString()) as WireRequest & { id: string };
+          const { id, url, method, headers, body, hasBody } = wire;
+          const registration = this.handlers.get(id);
+          if (!registration) {
             outgoing.writeHead(200, { "content-type": "application/json" }).end("null");
+            return;
+          }
+          if (hasBody && body === undefined && registration.needsBody?.(wire)) {
+            outgoing.writeHead(202).end();
             return;
           }
           const controller = new AbortController();
           outgoing.once("close", () => { if (!outgoing.writableFinished) controller.abort(); });
           const request = new Request(url, { method, headers, signal: controller.signal, body: body === undefined ? undefined : Buffer.from(body, "base64") });
-          const handlerResult = Promise.resolve().then(() => handler(request));
+          const handlerResult = Promise.resolve().then(() => registration.handler(request));
           this.active.add(handlerResult);
           const value = await handlerResult.finally(() => this.active.delete(handlerResult));
           const json = JSON.stringify(value ?? null);
