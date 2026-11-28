@@ -20,7 +20,7 @@ export function nuxtProxyContext(request: { headers: Record<string, unknown>; so
 export async function proxyNuxtFetch(
   fetch: typeof globalThis.fetch, context: NonNullable<ReturnType<typeof nuxtProxyContext>>, input: RequestInfo | URL, init?: RequestInit,
 ) {
-  const request = new Request(input instanceof Request ? input.clone() : input, init);
+  const request = new Request(input instanceof Request && init?.body == null ? input.clone() : input, init);
   request.signal.throwIfAborted();
   const headers = new Headers(request.headers);
   headers.delete(fakeBridgeHeader);
@@ -39,7 +39,7 @@ export async function proxyNuxtFetch(
   });
   let result = await send();
   if (result.status === 202) {
-    wire.body = Buffer.from(await request.arrayBuffer()).toString("base64");
+    wire.body = Buffer.from(await request.clone().arrayBuffer()).toString("base64");
     result = await send();
   }
   if (!result.ok) throw new Error("Rehearsal Nuxt fake handler failed (HTTP " + result.status + ").");
