@@ -4,48 +4,7 @@ Start with configuration overrides if you only need to change a default or narro
 
 ## Write an integration
 
-An integration implements four lifecycle hooks. Register the class under a unique key in `rehearsal.integrations`. The registry resolves it through Laravel's container in configuration order, then cleans up in reverse.
-
-```php
-namespace App\Testing;
-
-use Illuminate\Support\Facades\File;
-use Sti3bas\Rehearsal\{Attempt, Integration, Run};
-
-final class ReportScratch implements Integration
-{
-    public function provision(Run $run): void {}
-
-    public function reset(Attempt $attempt): void
-    {
-        $path = $attempt->path('reports');
-        if (is_dir($path) && ! File::deleteDirectory($path)) {
-            throw new \RuntimeException('Cannot clear the report scratch directory.');
-        }
-
-        File::ensureDirectoryExists($path, 0700);
-    }
-
-    public function bind(Attempt $attempt): void
-    {
-        config(['reports.scratch_path' => $attempt->path('reports')]);
-    }
-
-    public function cleanup(Run $run): void {}
-}
-```
-
-Add `'reports' => \App\Testing\ReportScratch::class` to the integration map. The app can now use `reports.scratch_path`. These files live inside the run directory, which the managed launcher removes. If your integration creates resources outside that directory, record what it owns and remove only those resources during cleanup.
-
-Discovery can find concrete implementations under the [helper paths](../concepts/discovery). Register the class explicitly when it depends on an earlier hook (such as the Database integration). Rehearsal calls `provision` once per run, `reset` before each attempt, `bind` when applying attempt state, and `cleanup` in reverse order. If you replace a default, give the implementation ownership of the state the default used to isolate:
-
-```php
-// In the existing integrations array:
-'laravel-state' => false,
-'my-state' => \App\Testing\MyIsolatedState::class,
-```
-
-For integrations discovered by class name, disable the class by using its fully qualified class name as the key with value `false`. Disable all automatic integration discovery with `integrations.discover => false` while retaining any explicit entries.
+See [Writing your own integration](../integrations/writing-your-own) for the lifecycle hooks, registration, and a complete example.
 
 ## Override a factory or state
 

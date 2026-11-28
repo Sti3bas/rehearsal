@@ -71,7 +71,7 @@ The package exports the `RehearsalSchema` interface for generated module augment
 
 Route responses accept `status`, `json` or `body`, `headers`, `delay` (milliseconds), and `once` or `times`. Browser/SSR mocks also support `abort`, `networkError`, and `passthrough`. See [mocks and callbacks](../concepts/mocking) for matching and gate behavior.
 
-With `reverbTest`, `reverb.subscribed(channel)` checks occupancy, `reverb.waitForSubscriber(channel, { timeout }?)` waits for occupancy, and `reverb.broadcast(channel, event, payload?)` publishes a message. See [service integrations](../guide/services) for the required services and browser setup.
+With `reverbTest`, `reverb.subscribed(channel)` checks occupancy, `reverb.waitForSubscriber(channel, { timeout }?)` waits for occupancy, and `reverb.broadcast(channel, event, payload?)` publishes a message. See [Reverb](../integrations/reverb) for the required services and browser setup.
 
 ## Package subpaths
 
@@ -81,4 +81,4 @@ With `reverbTest`, `reverb.subscribed(channel)` checks occupancy, `reverb.waitFo
 | `@sti3bas/rehearsal/nuxt` | Nuxt 4 module. Options under `rehearsal`: `laravelOrigin` (default `http://127.0.0.1:8100`), `forwardCookies` (default `[]`), and `typesense` (default `false`). Auto-imports `useRehearsalFetch` and `useTypesenseInstantSearch`. |
 | `@sti3bas/rehearsal/reporter` | Playwright reporter for the reset timings attached to attempts. Add it alongside your regular reporters. |
 
-See [SSR and Nuxt](../guide/ssr) for relay and process settings, or [CI and performance](../guide/ci) for reporter configuration.
+See [Frontends](../frontends/) and [Nuxt](../frontends/nuxt) for relay and process settings, or [CI and performance](../guide/ci) for reporter configuration.

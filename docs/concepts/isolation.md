@@ -8,7 +8,7 @@ Playwright decides which browser test runs where. Rehearsal supplies isolated La
 
 The lifecycle is **provision → reset → bind requests → cleanup**. Rehearsal copies or clones the migrated database baseline rather than running migrations for every test.
 
-Database and filesystem changes made by one attempt are not a setup mechanism for another. Arrange the state each test needs, or seed shared starting data into the [database baseline](../guide/services). In a retry, the replacement worker gets a fresh reset and marker even if it reuses the same slot.
+Database and filesystem changes made by one attempt are not a setup mechanism for another. Arrange the state each test needs, or seed shared starting data into the [database baseline](../integrations/database). In a retry, the replacement worker gets a fresh reset and marker even if it reuses the same slot.
 
 ## The isolation boundary
 
@@ -22,4 +22,4 @@ The browser's signed, HTTP-only cookie routes ordinary app requests to the test 
 
 `laravel.travel("2034-01-02T12:00:00.000Z")` changes Laravel's attempt clock and fixes the Playwright clock for pages managed by the fixture. Pass a Date or an ISO string with an explicit offset to avoid local-time ambiguity.
 
-See [service integrations](../guide/services) for what gets isolated and [SSR](../guide/ssr) for how separate frontends keep requests in the same attempt.
+See [integrations](../integrations/) for what gets isolated and [frontends](../frontends/) for how separate frontends keep requests in the same attempt.

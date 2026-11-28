@@ -16,3 +16,18 @@
   --vp-c-brand-soft: rgb(165 138 245 / 18%);
   --vp-home-hero-name-background: linear-gradient(115deg, #c5b3ff, #f7a7d5);
 }
+
+.install-stack {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0;
+  color: var(--vp-c-text-2);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.install-stack img:not(:first-child) {
+  margin-inline-start: 12px;
+}

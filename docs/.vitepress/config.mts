@@ -15,17 +15,18 @@ export default defineConfig({
     nav: [
       { text: "Guide", link: "/guide/getting-started", activeMatch: "/guide/" },
       { text: "Concepts", link: "/concepts/isolation", activeMatch: "/concepts/" },
+      { text: "Integrations", link: "/integrations/", activeMatch: "/integrations/" },
+      { text: "Frontends", link: "/frontends/", activeMatch: "/frontends/" },
       { text: "Reference", link: "/reference/typescript", activeMatch: "/reference/" },
     ],
     sidebar: [
       {
         text: "Guide",
         items: [
-          { text: "Getting started", link: "/guide/getting-started" },
+          { text: "Introduction", link: "/guide/getting-started" },
+          { text: "Installation", link: "/guide/installation" },
           { text: "Configuration", link: "/guide/configuration" },
           { text: "Extend and override", link: "/guide/extending" },
-          { text: "Service integrations", link: "/guide/services" },
-          { text: "SSR and Nuxt", link: "/guide/ssr" },
           { text: "CI and performance", link: "/guide/ci" },
         ],
       },
@@ -39,6 +40,37 @@ export default defineConfig({
           { text: "Named operations", link: "/concepts/operations" },
           { text: "Mocks and callbacks", link: "/concepts/mocking" },
           { text: "Queues and schedules", link: "/concepts/background-work" },
+        ],
+      },
+      {
+        text: "Integrations",
+        items: [
+          { text: "Overview", link: "/integrations/" },
+          { text: "Database", link: "/integrations/database" },
+          { text: "Filesystem", link: "/integrations/filesystem" },
+          { text: "Laravel State", link: "/integrations/laravel-state" },
+          { text: "Clock", link: "/integrations/clock" },
+          { text: "Mailpit", link: "/integrations/mailpit" },
+          {
+            text: "Laravel Scout",
+            link: "/integrations/scout/",
+            collapsed: true,
+            items: [
+              { text: "Database engine", link: "/integrations/scout/database" },
+              { text: "Meilisearch", link: "/integrations/scout/meilisearch" },
+              { text: "Typesense", link: "/integrations/scout/typesense" },
+            ],
+          },
+          { text: "Reverb", link: "/integrations/reverb" },
+          { text: "Writing your own", link: "/integrations/writing-your-own" },
+        ],
+      },
+      {
+        text: "Frontends",
+        items: [
+          { text: "Overview", link: "/frontends/" },
+          { text: "Inertia", link: "/frontends/inertia" },
+          { text: "Nuxt", link: "/frontends/nuxt" },
         ],
       },
       {

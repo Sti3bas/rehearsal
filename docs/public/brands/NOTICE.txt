@@ -1,0 +1,6 @@
+The Laravel, Composer, and Playwright SVGs are from Simple Icons (CC0 1.0).
+https://simpleicons.org/
+https://github.com/simple-icons/simple-icons/blob/develop/LICENSE.md
+
+The names and marks are used to identify the respective projects. CC0 does not
+grant trademark rights or imply endorsement.

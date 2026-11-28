@@ -14,7 +14,7 @@ Rehearsal connects a real Laravel application to Playwright Test. Run browser te
 
 **[Read the documentation](https://sti3bas.github.io/rehearsal/)**
 
-[Getting started](https://sti3bas.github.io/rehearsal/guide/getting-started.html) · [Configuration](https://sti3bas.github.io/rehearsal/guide/configuration.html) · [Concepts](https://sti3bas.github.io/rehearsal/concepts/isolation.html) · [Extending](https://sti3bas.github.io/rehearsal/guide/extending.html) · [API reference](https://sti3bas.github.io/rehearsal/reference/typescript.html)
+[Introduction](https://sti3bas.github.io/rehearsal/guide/getting-started.html) · [Installation](https://sti3bas.github.io/rehearsal/guide/installation.html) · [Configuration](https://sti3bas.github.io/rehearsal/guide/configuration.html) · [Concepts](https://sti3bas.github.io/rehearsal/concepts/isolation.html) · [Extending](https://sti3bas.github.io/rehearsal/guide/extending.html) · [API reference](https://sti3bas.github.io/rehearsal/reference/typescript.html)
 
 ## Requirements
 
@@ -43,7 +43,7 @@ export default defineConfig({
 });
 ```
 
-Import `test` from `@sti3bas/rehearsal` in your specs to use the `laravel` fixture. Run `npx playwright test`. The [getting started guide](https://sti3bas.github.io/rehearsal/guide/getting-started.html) includes a complete first test and setup for a separate frontend.
+Import `test` from `@sti3bas/rehearsal` in your specs to use the `laravel` fixture. Run `npx playwright test`. The [installation guide](https://sti3bas.github.io/rehearsal/guide/installation.html) includes a complete first test; see [Frontends](https://sti3bas.github.io/rehearsal/frontends/) for split setups.
 
 ## License
 

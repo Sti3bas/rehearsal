@@ -37,7 +37,7 @@ Only opt out of a safe default or built-in integration when the replacement uses
 | `disks` | `['local', 'public']` | Filesystem disk names isolated by the Filesystem integration. Use their generated URLs. |
 | `queues` | Not explicitly set | A non-empty list such as `['default', 'reports']` overrides the inferred queue allowlist (database queue name plus configured Horizon queues, falling back to `default`). |
 
-See [service integrations](./services#mysql-or-postgresql) for database setup outside SQLite.
+See [the database integration](../integrations/database#mysql-or-postgresql) for setup outside SQLite.
 
 ## Registries and discovery
 
@@ -66,4 +66,4 @@ The [auto-discovery reference](../concepts/discovery) explains scan paths and pr
 | `reverb.origin` | `REHEARSAL_REVERB_ORIGIN`, otherwise `http://${REVERB_HOST}:${REVERB_PORT}` when a host is set (port defaults to `8080`), otherwise unset | Loopback origin for a disposable Reverb daemon. |
 | `reverb.server` | `REHEARSAL_REVERB_SERVER` or `false` | Set true in the standalone test Reverb console process, not in the ordinary app server. |
 
-See [working service configurations](./services#mailpit-scout-and-reverb) and the [Playwright launcher options](../reference/typescript#laravelserver).
+See the [Mailpit](../integrations/mailpit), [Scout](../integrations/scout/), and [Reverb](../integrations/reverb) setup guides and the [Playwright launcher options](../reference/typescript#laravelserver).
