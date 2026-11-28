@@ -301,6 +301,10 @@ PHP);
             ->toContain('default', 'high', 'processing', 'moderation');
 
         expect(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/api/items/*/offers'))->toBeTrue()
+            ->and(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/api/items/**/offers'))->toBeFalse()
+            ->and(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/api/items/**/offers?sort=*'))->toBeFalse()
+            ->and(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/api/files/**'))->toBeTrue()
+            ->and(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/api/files/folder/*'))->toBeTrue()
             ->and(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/api/items/42/offers'))->toBeTrue()
             ->and(\Sti3bas\Rehearsal\FakeRoutes::allows('POST', '/api/items/42/offers'))->toBeFalse()
             ->and(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/_rehearsal/call'))->toBeFalse();

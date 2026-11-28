@@ -63,7 +63,10 @@ final class FakeRoutes
         }
         foreach (self::keys() as $key) {
             [$verb, $pattern] = explode(' ', $key, 2);
-            if ($method === $verb && self::matches($pattern, $path, $target)) {
+            [$allowedPath, $allowedQuery] = array_pad(explode('?', $pattern, 2), 2, null);
+            $query = explode('?', $target, 2)[1] ?? null;
+            if ($method === $verb && self::matchPattern($allowedPath, $path, true)
+                && ($allowedQuery === null || ($query !== null && self::matchPattern($allowedQuery, $query, true)))) {
                 return true;
             }
         }
@@ -80,8 +83,17 @@ final class FakeRoutes
 
     public static function matches(string $pattern, string $path, string $target): bool
     {
-        $candidate = str_contains($pattern, '?') ? $target : $path;
-        $regex = strtr(preg_quote($pattern, '~'), ['\*\*' => '.*', '\*' => '[^/]*']);
+        [$pattern, $query] = array_pad(explode('?', $pattern, 2), 2, null);
+        $targetQuery = explode('?', $target, 2)[1] ?? null;
+
+        return self::matchPattern($pattern, $path)
+            && ($query === null || ($targetQuery !== null && self::matchPattern($query, $targetQuery)));
+    }
+
+    private static function matchPattern(string $pattern, string $candidate, bool $candidateIsPattern = false): bool
+    {
+        $segment = $candidateIsPattern ? '(?:(?!\*\*)[^/])*' : '[^/]*';
+        $regex = strtr(preg_quote($pattern, '~'), ['\*\*' => '.*', '\*' => $segment]);
 
         return preg_match('~\A'.$regex.'\z~D', $candidate) === 1;
     }
