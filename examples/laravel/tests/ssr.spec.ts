@@ -4,6 +4,57 @@ import { expect, nuxtTest, passthrough, test } from "@sti3bas/rehearsal";
 const nuxt = mergeTests(test, nuxtTest);
 nuxt.use({ nuxtURL: "http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT });
 
+nuxt.describe("with a Nuxt URL pointing to a page", () => {
+  nuxt.use({ nuxtURL: "http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT + "/en/home" });
+
+  nuxt("falls back to the live root relay and intercepts SSR", async ({ nuxt, page, baseURL, nuxtURL }) => {
+    await nuxt.fake({ [`GET ${baseURL}/state`]: { json: { users: ["Found the relay"] } } });
+    const response = await page.goto(new URL("/api/state", nuxtURL).href);
+    expect((await response!.json()).global.users).toEqual(["Found the relay"]);
+  });
+});
+
+nuxt("matches any browser method without intercepting SSR", async ({ nuxt, page, baseURL, nuxtURL }) => {
+  const url = baseURL + "/state";
+  const hold = nuxt.hold();
+  await nuxt.fake({ [`* ${url}`]: hold }, { scope: "browser" });
+  const ssr = await page.goto(nuxtURL + "/api/state");
+  expect((await ssr!.json()).global.users).toEqual(["Baseline"]);
+  expect(hold.count()).toBe(0);
+
+  await nuxt.fake({ [`GET ${url}`]: { json: { users: ["SSR"] } } });
+  const methods: string[] = [];
+  await nuxt.fake({ [`* ${url}`]: async (request) => {
+    methods.push(request.method);
+    await hold(request);
+    return { json: { method: request.method } };
+  } }, { scope: "browser" });
+  const mixed = await page.goto(nuxtURL + "/api/state");
+  expect((await mixed!.json()).global.users).toEqual(["SSR"]);
+  expect(hold.count()).toBe(0);
+
+  await page.goto(baseURL!);
+  const browser = page.evaluate(async (target) => Promise.all(["GET", "POST"].map(async (method) =>
+    (await fetch(target, { method })).json(),
+  )), url);
+  await expect.poll(hold.count).toBe(2);
+  nuxt.clearFakes();
+  expect(await browser).toEqual([{ method: "GET" }, { method: "POST" }]);
+  expect(methods.sort()).toEqual(["GET", "POST"]);
+  expect((await (await page.goto(nuxtURL + "/api/state"))!.json()).global.users).toEqual(["Baseline"]);
+});
+
+nuxt.describe("without the Nuxt module", () => {
+  nuxt.use({ nuxtURL: undefined });
+
+  nuxt("reports the missing module for SSR but allows browser-only rules", async ({ nuxt, page, baseURL }) => {
+    const rules = { [`GET ${baseURL}/state`]: { body: "browser only" } };
+    await expect(nuxt.fake(rules)).rejects.toThrow('Add "@sti3bas/rehearsal/nuxt"');
+    await nuxt.fake(rules, { scope: "browser" });
+    expect(await (await page.goto(baseURL + "/state"))!.text()).toBe("browser only");
+  });
+});
+
 nuxt("matches Nuxt fake root URLs without a trailing slash", async ({ nuxt, page, baseURL }) => {
   await nuxt.fake({ [`GET ${baseURL}`]: { body: "Fake root" } });
   expect(await (await page.request.get(baseURL!)).text()).toBe("Rehearsal");

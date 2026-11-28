@@ -1,5 +1,6 @@
-import { addDevServerHandler, addImports, addPlugin, createResolver, defineNuxtModule } from "@nuxt/kit";
+import { addDevServerHandler, addImports, addPlugin, addServerHandler, createResolver, defineNuxtModule } from "@nuxt/kit";
 import { fakeBridgeHeader, isLoopbackPeer } from "./fake-bridge.js";
+import { nuxtReadyPath } from "./nuxt-readiness.js";
 
 interface ModuleOptions {
   laravelOrigin: string;
@@ -23,6 +24,7 @@ export default defineNuxtModule<ModuleOptions>({
       } });
     }
     addPlugin({ src: resolve("./nuxt.plugin.mjs"), mode: "server" });
+    addServerHandler({ route: nuxtReadyPath, method: "get", handler: resolve("./nitro-ready.mjs") });
     nuxt.hook("nitro:config", (config) => {
       (config.plugins ??= []).push(resolve("./nitro.plugin.mjs"));
     });

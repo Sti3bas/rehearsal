@@ -17,16 +17,12 @@ Callback routing is for real, signature-verified inbound callbacks, not for faki
 await laravel.route("/api/listings/**").respond({ json: { data: [] }, delay: 100 });
 await laravel.route(listings.show({ listing: slug })).respond({ status: 404, once: true });
 await laravel.route("/api/feed").respond({ status: 503, times: 2 });
-
-const gate = await laravel.route("/api/feed").pause({ json: { data: [] } });
-const navigation = page.goto("/feed");
-await gate.waitForRequest();
-await gate.release();
-await navigation;
 await laravel.clearRouteMocks();
 ```
 
 Pass a URL at the Laravel origin, a path (with `*` for a segment or `**` across segments), or a Wayfinder object or route function and its parameters. Wayfinder objects also match the HTTP method. Supports JSON, text bodies, headers, status, delays (milliseconds), aborts and network errors. If a pattern includes a query string it is matched; otherwise queries are ignored. Newest matching registration wins; `once` or `times` counts claims across the browser and SSR, including across browser contexts bound to the same attempt. Once exhausted, the next matching rule or the real route takes over. The Nuxt module uses MSW for fetches using `useRehearsalFetch()` in forwarding mode. Browser routes apply only to Playwright contexts bound to the attempt and HTTP requests to Laravel, not third-party assets.
+
+Set `rehearsal.route_mocks` to `false` to disable these Laravel browser and SSR response mocks and their resolution route. The browser login route is only installed when login is configured, and the Typesense credential route is only installed when the Scout integration is configured for Typesense.
 
 ### Nuxt browser and SSR fakes
 
@@ -48,7 +44,7 @@ test("renders a live fake during SSR", async ({ nuxt, page }) => {
 });
 ```
 
-Keys are HTTP methods plus absolute URLs. A `*` matches any string; the query is matched only if the pattern includes one. Give each rule a response, an array of responses (the last repeats), or a sync/async callback taking a standard `Request`. The callback can return `passthrough` to let the real request run. Newer rules win, and the browser and Nitro both consume the same sequence. Use `NuxtFakeRule<YourJsonType>` to constrain the response body for an external API. No MSW API is needed.
+Keys are HTTP methods (or `*` for any method) plus absolute URLs. A `*` in the URL matches any string; the query is matched only if the pattern includes one. Give each rule a response, an array of responses (the last repeats), or a sync/async callback taking a standard `Request`. The callback can return `passthrough` to let the real request run. Newer rules win, and the browser and Nitro both consume the same sequence by default. Pass `{ scope: "browser" }` as the second argument to `nuxt.fake` to skip interception in SSR. Browser-only rules don't require the Nuxt module or its relay. Use `NuxtFakeRule<YourJsonType>` to constrain the response body for an external API. No MSW API is needed.
 
 Use `{ networkError: true }` to simulate a connection failure instead of an HTTP error. Playwright aborts the browser request and Nitro's proxied `fetch` rejects with a `TypeError`. The failure can also be delayed with `delay`, returned by a callback, or used in a sequence.
 
@@ -71,10 +67,6 @@ await nuxt.navigate(page, "/search?q=oak", { expect: /q=oak$/ });
 ```
 
 `nuxt.navigate(page, path, { state?, expect? })` runs a Nuxt router push and waits for the destination URL (or the provided string or regular expression). In an app using Vue Router, pass `state` to attach history state.
-
-`pause()` lets matched requests continue to Laravel after `release()`; with a response it returns that response instead. `waitForRequest({ timeout: 5000 })` waits until the first match (five seconds by default). Clearing a mock removes future matches, but does not release requests already waiting on its gate.
-
-Set `rehearsal.route_mocks` to `false` to disable browser and SSR response mocks and their resolution route. The browser login route is only installed when login is configured, and the Typesense credential route is only installed when the Scout integration is configured for Typesense.
 
 ## Fake incoming Laravel routes
 
