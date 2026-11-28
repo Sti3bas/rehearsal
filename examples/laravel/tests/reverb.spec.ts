@@ -7,6 +7,14 @@ declare global {
   var rehearsalEvents: unknown[];
 }
 
+test("injects the attempt's Reverb settings into a managed secondary browser", async ({ laravel, newBrowser }) => {
+  const { page } = await newBrowser({ page: true });
+  await page.goto("/");
+  const config = laravel.integrationMetadata("reverb");
+  expect(config).toBeDefined();
+  expect(await page.evaluate(() => globalThis.__REHEARSAL_REVERB__)).toEqual(config);
+});
+
 for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
   test("isolates identical Reverb channels for " + name, async ({ reverb, page }, info) => {
     expect(await reverb.subscribed("probe")).toBe(false);

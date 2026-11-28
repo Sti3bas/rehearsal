@@ -60,6 +60,33 @@ test("logs additional browser contexts into independent sessions in the same att
   }
 });
 
+test.describe("managed secondary browsers", () => {
+  test.use({ locale: "da-DK", viewport: { width: 800, height: 600 } });
+
+  test("inherit context settings, isolate sessions and track the Laravel clock", async ({ laravel, newBrowser, page }) => {
+    const actor = await laravel.factory("User", { name: "Managed Actor" });
+    const time = "2034-01-02T12:00:00.000Z";
+    await laravel.travel(time);
+    const anonymous = await newBrowser();
+    const secondary = await newBrowser({
+      user: { id: Number(actor.id) },
+      context: { userAgent: "Rehearsal example" },
+      page: true,
+    });
+
+    expect(anonymous.page).toBeUndefined();
+    expect(await (await anonymous.context.request.get("/state")).json()).toMatchObject({ user: null });
+    expect(await (await page.request.get("/state")).json()).toMatchObject({ user: null });
+    expect(await (await secondary.page.goto("/state"))?.json()).toMatchObject({ user: "Managed Actor" });
+    expect(secondary.page.viewportSize()).toEqual({ width: 800, height: 600 });
+    expect(await secondary.page.evaluate(() => ({
+      language: navigator.language,
+      userAgent: navigator.userAgent,
+      time: new Date().toISOString(),
+    }))).toEqual({ language: "da-DK", userAgent: "Rehearsal example", time });
+  });
+});
+
 for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
   test("isolates " + name + " with identical IDs and resource keys", async ({ laravel, page }, info) => {
     const base = await page.goto("/state");
