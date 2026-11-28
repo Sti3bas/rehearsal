@@ -16,7 +16,7 @@ test("reads the attempt user without a browser context", async ({ laravel }) => 
 test("reads the real Sanctum user from the isolated API session", async ({ laravel, newBrowser, request }) => {
   const { context } = await newBrowser();
   const attempt = (await context.cookies()).find(({ name }) => name === "rehearsal_attempt")!;
-  const frontendOrigin = "http://127.0.0.1:" + (process.env.REHEARSAL_E2E_NUXT_PORT ?? "8325");
+  const frontendOrigin = "http://127.0.0.1:" + (process.env.REHEARSAL_E2E_NUXT_PORT || "8325");
   const headers = { Accept: "application/json", Origin: frontendOrigin, "X-Rehearsal-Attempt": attempt.value };
   const name = "API session user";
   const email = "api-session@example.test";
