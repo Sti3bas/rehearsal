@@ -55,13 +55,13 @@ For integrations discovered by class name, disable the class by using its fully 
     'Member' => [
         'model' => \App\Models\User::class,
         'factory' => \Database\Factories\UserFactory::class,
-        'states' => ['active' => 'verified', 'unverified' => false],
+        'states' => ['teamMember' => 'staff', 'staff' => false],
         'types' => ['required' => ['id', 'name']],
     ],
 ],
 ```
 
-Call `laravel.factory("Member").active().create()` with the standard Laravel UserFactory's `verified` method. The explicit state name maps to a factory method; `false` removes a discovered state. To turn off automatic state discovery on a single alias, set `states` to `false`. To restrict the factory registry itself to an explicit set, set `factories.discover` to `false` and list every alias the tests need.
+Call `laravel.factory("Member").teamMember().create()` with the [example UserFactory](https://github.com/Sti3bas/rehearsal/blob/main/examples/laravel/database/factories/UserFactory.php), which defines `staff()`. The alias calls that method, while `'staff' => false` hides its automatically discovered name for `Member`. To turn off automatic state discovery on a single alias, set `states` to `false`. To restrict the factory registry itself to an explicit set, set `factories.discover` to `false` and list every alias the tests need.
 
 ## Register or replace an operation
 
