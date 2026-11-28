@@ -9,8 +9,8 @@ const collision = "same-address@example.test";
 
 test("reads the attempt user without a browser context", async ({ laravel }) => {
   await expect(laravel.user()).resolves.toBeNull();
-  await laravel.fake("GET /api/user", { json: { name: "Attempt user" } });
-  await expect(laravel.user()).resolves.toEqual({ name: "Attempt user" });
+  await laravel.fake("GET /state", { json: { name: "Attempt user" } });
+  await expect(laravel.user({ endpoint: "/state" })).resolves.toEqual({ name: "Attempt user" });
 });
 
 test("uses the managed rehearsal environment and forwards Laravel env values", async ({ page }) => {
