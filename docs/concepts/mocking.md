@@ -52,7 +52,7 @@ Keys are HTTP methods plus absolute URLs. A `*` matches any string; the query is
 
 Use `{ networkError: true }` to simulate a connection failure instead of an HTTP error. Playwright aborts the browser request and Nitro's proxied `fetch` rejects with a `TypeError`. The failure can also be delayed with `delay`, returned by a callback, or used in a sequence.
 
-Unmatched scripts, stylesheets, fonts, and EventSource requests use the browser's normal routing without the SSR bridge. Explicit rules can still match those requests.
+Unmatched browser requests use normal browser routing. Only same-origin document navigations carry the SSR bridge, so client-side fetches, including streaming requests, retain native browser behavior. Explicit rules can still match those requests.
 
 Fakes belong to the fixture's Playwright page and SSR requests made by that page. `page.request`, `context.request`, and standalone `APIRequestContext` requests bypass Playwright page routing, so they do not get these fakes or transmit the SSR context. For SSR, a test-only header identifies the worker's loopback handler; Nitro removes it before calling application code, and never forwards it to the original destination. Rules are cleared between tests or manually with `nuxt.clearFakes()`. This proxy-back uses standard server-side fetch on Node/Nitro 2; requests made outside the browser's test context run normally.
 

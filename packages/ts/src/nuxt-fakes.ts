@@ -147,10 +147,9 @@ export class NuxtFakes {
   private intercept = async (route: Route, request: BrowserRequest) => {
     const url = new URL(request.url());
     const rule = this.match(request.method(), url);
-    const headers = new Headers(await request.allHeaders());
-    headers.delete(fakeBridgeHeader);
     if (rule) {
-      const input = new Headers(headers);
+      const input = new Headers(await request.allHeaders());
+      input.delete(fakeBridgeHeader);
       input.delete(markerHeader);
       input.delete(capabilityHeader);
       const body = request.postDataBuffer();
@@ -164,8 +163,9 @@ export class NuxtFakes {
         return route.fulfill({ status, headers: Object.fromEntries(responseHeaders), body });
       }
     }
-    if (url.origin !== this.frontend.origin || !this.rules.length ||
-      ["script", "stylesheet", "font", "eventsource"].includes(request.resourceType())) return route.fallback();
+    if (url.origin !== this.frontend.origin || !this.rules.length || !request.isNavigationRequest() ||
+      request.resourceType() !== "document") return route.fallback();
+    const headers = new Headers(await request.allHeaders());
     const { port, token, id } = await this.connection!;
     headers.set(fakeBridgeHeader, [port, token, id].join("."));
     const response = await route.fetch({ headers: Object.fromEntries(headers), maxRedirects: 0 });

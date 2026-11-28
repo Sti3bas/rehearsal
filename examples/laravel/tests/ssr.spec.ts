@@ -51,6 +51,26 @@ nuxt("leaves unmatched frontend scripts to browser asset routes", async ({ nuxt,
   expect(await page.evaluate(() => Reflect.get(window, "rehearsalAssetLoaded"))).toBe(true);
 });
 
+nuxt("streams unmatched browser fetches without attaching omitted cookies", async ({ nuxt, page, baseURL, nuxtURL, context }) => {
+  await context.addCookies([{ name: "probe", value: "present", url: nuxtURL! }]);
+  await nuxt.fake({ [`GET ${baseURL}/state`]: { json: { users: ["Unrelated"] } } });
+  await page.goto(nuxtURL!);
+  const firstEvent = (credentials: RequestCredentials) => page.evaluate(async (credentials) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5_000);
+    try {
+      const response = await fetch("/api/stream", { credentials, signal: controller.signal });
+      const { value } = await response.body!.getReader().read();
+      return new TextDecoder().decode(value);
+    } finally {
+      clearTimeout(timeout);
+      controller.abort();
+    }
+  }, credentials);
+  await expect(firstEvent("same-origin")).resolves.toBe("data: present\n\n");
+  await expect(firstEvent("omit")).resolves.toBe("data: no cookie\n\n");
+});
+
 nuxt("forwards an SSR replacement body to the real destination on a fake miss", async ({ nuxt, page, baseURL, nuxtURL }) => {
   await nuxt.fake({ [`GET ${baseURL}/state`]: { json: { users: ["Unrelated"] } } });
   expect(await (await page.goto(nuxtURL + "/api/fake-echo"))?.json()).toEqual({ body: "replacement" });
