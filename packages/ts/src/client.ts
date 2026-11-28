@@ -131,7 +131,9 @@ export class Laravel {
       try {
         return encodeRouteResponse(await response(request));
       } catch (error) {
-        if (!request.signal.aborted || error !== request.signal.reason) this.callbackFailure ??= { error };
+        const cancelled = request.signal.aborted && (error === request.signal.reason ||
+          (error instanceof Error && (error.name === "AbortError" || error.cause === request.signal.reason)));
+        if (!cancelled) this.callbackFailure ??= { error };
         throw error;
         }
       });

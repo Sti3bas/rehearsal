@@ -1,4 +1,5 @@
 import { readFileSync, statSync } from "node:fs";
+import { setTimeout as sleep } from "node:timers/promises";
 import type { APIRequestContext } from "@playwright/test";
 import { describe, expect, it, vi } from "vitest";
 import { Laravel, startAttempt } from "../src/client.js";
@@ -75,10 +76,12 @@ describe("client", () => {
     const client = new Laravel("http://127.0.0.1:8100", { post } as unknown as APIRequestContext, "cap", "attempt");
     let started!: (request: Request) => void;
     const entered = new Promise<Request>((resolve) => { started = resolve; });
-    await client.fake("GET /state", (request) => new Promise((_, reject) => {
-      if (observesCancellation) request.signal.addEventListener("abort", () => reject(request.signal.reason));
+    await client.fake("GET /state", async (request) => {
       started(request);
-    }));
+      if (observesCancellation) await sleep(10_000, undefined, { signal: request.signal });
+      else await new Promise(() => {});
+      return { status: 200 };
+    });
     const { port, token, id } = post.mock.calls[0][1].data.data.callback;
     const controller = new AbortController();
     const pending = fetch(`http://127.0.0.1:${port}/_rehearsal/fake`, {
@@ -86,11 +89,14 @@ describe("client", () => {
       body: JSON.stringify({ id, url: "http://127.0.0.1:8100/state", method: "GET", headers: [] }),
     }).catch(() => {});
     const request = await entered;
-    controller.abort();
-    await pending;
+    if (!observesCancellation) {
+      controller.abort();
+      await pending;
+    }
     const teardown = client.disposeFakes();
     if (observesCancellation) await expect(teardown).resolves.toBeUndefined();
     else await expect(teardown).rejects.toThrow("fake callbacks did not stop");
+    await pending;
     expect(request.signal.aborted).toBe(true);
   });
 
