@@ -65,11 +65,31 @@ for (const name of ["Ada", "Grace"]) {
   });
 }
 
+nuxt("holds SSR and browser requests until released and navigates with router state", async ({ nuxt, page, baseURL, nuxtURL }) => {
+  await page.goto(nuxtURL!);
+  await nuxt.navigate(page, "/?preview=1#client", { state: { probe: "router" }, expect: /preview=1#client$/ });
+  expect(await page.evaluate(() => history.state.probe)).toBe("router");
+  const hold = nuxt.hold();
+  await nuxt.fake({ [`GET ${baseURL}/state`]: hold });
+  const ssr = page.goto(nuxtURL + "/api/state");
+  await expect.poll(() => hold.count()).toBe(2);
+  hold.release();
+  expect((await (await ssr)!.json()).global.users).toEqual(["Baseline"]);
+  await page.goto(baseURL!);
+  const browserHold = nuxt.hold();
+  await nuxt.fake({ [`GET ${baseURL}/state`]: browserHold });
+  const browser = page.evaluate(async (url) => (await fetch(url, { credentials: "include" })).json(), baseURL + "/state");
+  await expect.poll(() => browserHold.count()).toBe(1);
+  browserHold.release();
+  expect((await browser).users).toEqual(["Baseline"]);
+});
+
 for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
   test("authenticates Sanctum from Nuxt and renders " + name + " on the server", async ({ laravel, page, baseURL, request }) => {
     const nuxt = "http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT;
     const email = "sanctum@example.test";
     const password = "example-password";
+    await expect(laravel.user({ frontendOrigin: nuxt })).resolves.toBeNull();
     await laravel.factory("User", { name, email, password });
     const corsHeaders = {
       Origin: nuxt,
@@ -97,6 +117,7 @@ for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
       return { csrf: csrf.status, rejected: rejected.status, login: session.status, user: await user.json() };
     }, { api: baseURL!, email, password });
     expect(auth).toEqual({ csrf: 204, rejected: 401, login: 204, user: { name } });
+    await expect(laravel.user<{ name: string }>({ endpoint: "/api/user", frontendOrigin: nuxt })).resolves.toEqual({ name });
     const response = await page.goto(nuxt + "/?authenticated=1");
     expect(await response?.text()).toContain('data-testid="authenticated-user">' + name);
     await expect(page.getByTestId("authenticated-user")).toHaveText(name);

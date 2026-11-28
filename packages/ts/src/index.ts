@@ -22,7 +22,8 @@ interface WorkerOptions {
   rehearsalRun: RunConnection;
 }
 
-export const test = base.extend<{ laravel: Laravel; newBrowser: NewBrowser }, WorkerOptions>({
+export const test = base.extend<{ laravel: Laravel; newBrowser: NewBrowser; rehearsalUserEndpoint: string }, WorkerOptions>({
+  rehearsalUserEndpoint: ["/api/user", { option: true }],
   laravelURL: [undefined, { option: true, scope: "worker" }],
   rehearsalRoot: [process.cwd(), { option: true, scope: "worker" }],
   rehearsalCapability: [undefined, { option: true, scope: "worker" }],
@@ -51,11 +52,11 @@ export const test = base.extend<{ laravel: Laravel; newBrowser: NewBrowser }, Wo
       await request.dispose();
     }
   }, { scope: "worker" }],
-  laravel: [async ({ rehearsalRun, baseURL }, use, testInfo) => {
+  laravel: [async ({ rehearsalRun, baseURL, rehearsalUserEndpoint }, use, testInfo) => {
     const { request, origin, capability, slot } = rehearsalRun;
     const attempt = await startAttempt(request, origin, capability, slot);
     await testInfo.attach("rehearsal-reset", { body: JSON.stringify(attempt.resetMs), contentType: "application/json" });
-    const laravel = new Laravel(origin, request, capability, attempt.marker, baseURL ? new URL(baseURL).origin : origin, attempt.client);
+    const laravel = new Laravel(origin, request, capability, attempt.marker, baseURL ? new URL(baseURL).origin : origin, attempt.client, rehearsalUserEndpoint);
     try {
       await use(laravel);
     } finally {
@@ -75,7 +76,7 @@ export const test = base.extend<{ laravel: Laravel; newBrowser: NewBrowser }, Wo
 
 export const reverbTest = test.extend<{ reverb: Reverb }>({
   reverb: async ({ laravel }, use) => {
-    await use(new Reverb(laravel));
+    await use(laravel.reverb);
   },
   context: async ({ context, laravel, baseURL }, use) => {
     if (!baseURL) throw new Error("The Rehearsal Reverb plugin requires a frontend baseURL.");
@@ -104,7 +105,7 @@ export const nuxtTest = base.extend<{ nuxt: NuxtFakes; nuxtURL?: string }>({
   },
 });
 
-export { passthrough, type NuxtFakeHandler, type NuxtFakePattern, type NuxtFakeResponse, type NuxtFakeRule, type NuxtFakeRules } from "./nuxt-fakes.js";
+export { passthrough, type NuxtFakeHandler, type NuxtFakePattern, type NuxtFakeResponse, type NuxtFakeRule, type NuxtFakeRules, type NuxtHold, type NuxtNavigationOptions } from "./nuxt-fakes.js";
 export { expect } from "@playwright/test";
 export type { NewBrowser, NewBrowserOptions, NewBrowserSession } from "./browser.js";
 export { Laravel, type FactoryCall, type FactoryDefinition, type TypesenseClientConfig } from "./client.js";

@@ -84,12 +84,13 @@ Each call inherits Playwright's context options; `context` overrides them for th
 | `queue.drainUntil(assertion, options?)` | Drains and retries the assertion until it succeeds, the queue work fails, or the timeout expires (default 10 s; interval 100 ms). |
 | `schedule.run(names, { drain? }?)` | Runs an alias or a list of aliases, optionally drains queues, and returns `{ results, drain }`. Throws on a nonzero task exit code. |
 | `mailbox(recipient)` | Attempt-scoped inbox with `all()`, `latest(filter?)`, `expectReceived(subject?, options?)`, and `link(text, filter?)`. Subject and link text accept strings or regular expressions. |
-| `typesense()` | Browser-safe `{ origin, collectionPrefix, searchKey }` for the attempt; requires the Typesense integration. |
+| `typesense()` | Browser-safe `{ origin, collectionPrefix, searchKey }` for the attempt; requires the Typesense integration. Use `.collection(name)` for the prefixed `name`, relative `searchPath`, and `waitForIndexed(count, { timeout }?)` (at least `count` hits). |
+| `user<T>({ context, endpoint, frontendOrigin }?)` | Reads the signed-in user from the bound browser context (or an explicit context). Returns parsed JSON or `null` on HTTP 401. Defaults to `/api/user`; override with the `rehearsalUserEndpoint` test option or a same-origin endpoint per call. For Sanctum, `frontendOrigin` defaults to the test's `baseURL` origin; override it if the frontend runs on a different origin. |
 | `integrationMetadata(name)` | Client metadata published by an integration, typed as `unknown`. Do not publish server secrets through integration metadata. |
 
 Route responses accept `status`, `json` or `body`, `headers`, `delay` (milliseconds), and `once` or `times`. Browser/SSR mocks also support `abort`, `networkError`, and `passthrough`. See [mocks and callbacks](../concepts/mocking) for matching and gate behavior.
 
-With `reverbTest`, `reverb.subscribed(channel)` checks occupancy, `reverb.waitForSubscriber(channel, { timeout }?)` waits for occupancy, and `reverb.broadcast(channel, event, payload?)` publishes a message. See [Reverb](../integrations/reverb) for the required services and browser setup.
+`laravel.reverb.host` is the attempt's Reverb host and port, `.subscribed(channel)` checks occupancy, `.waitForChannel(channel, { timeout }?)` waits for occupancy, and `.broadcast(channel, event, payload?)` publishes a message. `reverbTest` exposes the same API through its `reverb` fixture and injects the browser connection config. See [Reverb](../integrations/reverb) for setup.
 
 ## Package subpaths
 

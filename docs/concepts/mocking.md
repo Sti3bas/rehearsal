@@ -45,6 +45,20 @@ Fakes belong to the fixture's Playwright page and SSR requests made by that page
 
 Playwright page routing handles only the first request in a browser redirect chain. To test SSR fakes on a redirect destination, navigate directly to that URL; if the request reaches Laravel, a Laravel route fake also works across redirects.
 
+Use `nuxt.hold()` to pause matching browser or SSR requests before they hit the real destination. The returned handler counts arrivals and lets the requests pass through when released. Release SSR requests before the proxy's 10-second timeout.
+
+```ts
+const pending = nuxt.hold();
+await nuxt.fake({ "GET https://search.example.test/collections/*": pending });
+const navigation = page.goto("/");
+await expect.poll(pending.count).toBeGreaterThan(0);
+pending.release();
+await navigation;
+await nuxt.navigate(page, "/search?q=oak", { expect: /q=oak$/ });
+```
+
+`nuxt.navigate(page, path, { state?, expect? })` runs a Nuxt router push and waits for the destination URL (or the provided string or regular expression). In an app using Vue Router, pass `state` to attach history state.
+
 `pause()` lets matched requests continue to Laravel after `release()`; with a response it returns that response instead. `waitForRequest({ timeout: 5000 })` waits until the first match (five seconds by default). Clearing a mock removes future matches, but does not release requests already waiting on its gate.
 
 Set `rehearsal.route_mocks` to `false` to disable browser and SSR response mocks and their resolution route. The browser login route is only installed when login is configured, and the Typesense credential route is only installed when the Scout integration is configured for Typesense.

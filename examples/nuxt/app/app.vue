@@ -15,6 +15,7 @@ const { data: user } = useRoute().query.authenticated ? await useFetch<{ name: s
 
 <template>
   <main>
+    <NuxtPage />
     <TypesenseSearch v-if="$route.query.search" />
     <p v-if="user" data-testid="authenticated-user">{{ user.name }}</p>
     <ul>

@@ -52,6 +52,7 @@ for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
     expect(await laravel.mailbox("other@example.test").all()).toEqual([]);
     if (process.env.REHEARSAL_E2E_SCOUT === "typesense") {
       const typesense = laravel.typesense();
+      await typesense.collection("users").waitForIndexed(2);
       await page.goto("/");
       await expect(browserSearch(page, typesense)).resolves.toEqual({ status: 200, hits: ["Baseline", title] });
       const nextSlot = (info.parallelIndex + 1) % 4 + 1;

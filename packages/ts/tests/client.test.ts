@@ -214,13 +214,21 @@ describe("client", () => {
     expect(laravelServer({ env: { STRIPE_KEY: undefined } }).env).not.toHaveProperty("REHEARSAL_MANAGED_ENV_FILE");
   });
 
-  it("uses Typesense metadata under a custom integration name", () => {
+  it("uses Typesense metadata under a custom integration name", async () => {
     const origin = "http://127.0.0.1:8100";
     const config = { origin: "http://127.0.0.1:8108", collectionPrefix: "worker_", searchKey: "search-only" };
-    const client = new Laravel(origin, {} as APIRequestContext, "cap", "attempt", origin, {
+    const get = vi.fn().mockResolvedValue({ ok: () => true, json: async () => ({ found: 2 }), dispose: vi.fn() });
+    const client = new Laravel(origin, { get } as unknown as APIRequestContext, "cap", "attempt", origin, {
       search: { engine: "typesense", ...config },
     });
     expect(client.typesense()).toEqual(config);
+    const collection = client.typesense().collection("users");
+    expect(collection.name).toBe("worker_users");
+    expect(collection.searchPath).toBe("/collections/worker_users/documents/search");
+    await collection.waitForIndexed(2);
+    expect(get).toHaveBeenCalledWith(config.origin + collection.searchPath, {
+      headers: { "X-Typesense-Api-Key": config.searchKey }, params: { q: "*", per_page: "0" }, maxRedirects: 0,
+    });
   });
 
   it("preserves normal InstantSearch settings without an attempt and scopes all collection settings with one", () => {
