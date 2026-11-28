@@ -23,6 +23,11 @@ nuxt("leaves Nuxt redirects to the browser and fakes direct navigations", async 
   expect((await (await page.goto(nuxtURL + "/api/state"))!.json()).global.users).toEqual(["Redirected"]);
 });
 
+nuxt("forwards an SSR replacement body to the real destination on a fake miss", async ({ nuxt, page, baseURL, nuxtURL }) => {
+  await nuxt.fake({ [`GET ${baseURL}/state`]: { json: { users: ["Unrelated"] } } });
+  expect(await (await page.goto(nuxtURL + "/api/fake-echo"))?.json()).toEqual({ body: "replacement" });
+});
+
 for (const name of ["Ada", "Grace"]) {
   nuxt("shares runtime Nuxt fake handlers between SSR and the browser for " + name, async ({ nuxt, page, baseURL, nuxtURL }) => {
     let hits = 0;
