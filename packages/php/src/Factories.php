@@ -74,6 +74,67 @@ final class Factories
             : null;
     }
 
+    /** @return list<string> */
+    public function definitionKeys(array $definition): array
+    {
+        $class = $this->factoryClass($definition);
+        if ($class === null) {
+            return [];
+        }
+
+        $method = new ReflectionMethod($class, 'definition');
+        $file = $method->getFileName();
+        $lines = $file === false ? false : file($file);
+        if ($lines === false) {
+            return [];
+        }
+
+        $start = $method->getStartLine();
+        $source = implode('', array_slice($lines, $start - 1, $method->getEndLine() - $start + 1));
+        $tokens = array_values(array_filter(PhpToken::tokenize('<?php '.$source), static fn (PhpToken $token) => ! $token->isIgnorable()));
+        foreach ($tokens as $index => $token) {
+            if ($token->is('{')) {
+                break;
+            }
+        }
+        $body = array_slice($tokens, $index);
+        if (! ($body[0] ?? null)?->is('{') || ! ($body[1] ?? null)?->is(T_RETURN)) {
+            return [];
+        }
+        $array = $body[2] ?? null;
+        if ($array?->is('[')) {
+            [$entriesStart, $close] = [3, ']'];
+        } elseif ($array?->is(T_ARRAY) && ($body[3] ?? null)?->is('(')) {
+            [$entriesStart, $close] = [4, ')'];
+        } else {
+            return [];
+        }
+        if (array_map(static fn (PhpToken $token) => $token->text, array_slice($body, -3)) !== [$close, ';', '}']) {
+            return [];
+        }
+
+        $keys = [];
+        $depth = 0;
+        $entry = true;
+        foreach (array_slice($body, $entriesStart, -3, true) as $index => $token) {
+            if ($depth === 0 && $entry && $token->is(T_CONSTANT_ENCAPSED_STRING)
+                && $body[$index + 1]->is(T_DOUBLE_ARROW)
+                && preg_match('/^[\'"]([a-zA-Z_][a-zA-Z_0-9]*)[\'"]$/D', $token->text, $match)) {
+                $keys[] = $match[1];
+            }
+            if ($token->is(['[', '(', '{', T_ATTRIBUTE, T_CURLY_OPEN, T_DOLLAR_OPEN_CURLY_BRACES])) {
+                $depth++;
+            } elseif ($token->is([']', ')', '}'])) {
+                if (--$depth < 0) {
+                    return [];
+                }
+            }
+            $entry = $depth === 0 && $token->is(',');
+        }
+
+        return $depth === 0 ? $keys : [];
+    }
+
     /**
      * @return array<string, array{method: string, params: list<array{name: string, optional: bool, nullable: bool, types: list<array{kind: string, class?: string}>}>}>
      */

@@ -12,7 +12,16 @@ type Artisan = Schema<"artisan", Record<string, Row>>;
 
 export type FactoryName = keyof Factories & string;
 export type FactoryAttributes<K extends FactoryName> = Factories[K]["attributes"];
-export type FactoryModel<K extends FactoryName> = Factories[K]["model"] & { readonly [rehearsalModel]?: K };
+export type ModelResult<K extends FactoryName> = K extends FactoryName
+  ? Factories[K]["model"] & { readonly [rehearsalModel]?: K }
+  : never;
+export type FactoryModel<K extends FactoryName> = K extends FactoryName
+  ? ModelResult<K> & (
+    Factories[K] extends { factoryRequired: infer RequiredKeys }
+      ? Required<Pick<Factories[K]["model"], Extract<RequiredKeys, keyof Factories[K]["model"]>>>
+      : unknown
+  )
+  : never;
 export type FactoryModelRef<K extends FactoryName = FactoryName> = { readonly id: number | string; readonly [rehearsalModel]?: K };
 export type FactoryStateMap<K extends FactoryName> =
   [Factories[K]["states"]] extends [never]
@@ -51,9 +60,17 @@ export type FactoryCountBuilder<K extends FactoryName> = FactoryCountBuilderBase
   [S in FactoryState<K>]: (...args: FactoryStateMap<K>[S]) => FactoryCountBuilder<K>;
 };
 export type ModelWhereOperator = "=" | "!=" | "<" | "<=" | ">" | ">=" | "like";
-export type ModelColumn<K extends FactoryName> = keyof Factories[K]["model"] & string;
+type ModelColumnNames<K extends FactoryName> = Factories[K] extends { modelColumns: infer Columns } ? Columns & string : string;
+export type ModelColumn<K extends FactoryName> = keyof Factories[K]["model"] & ModelColumnNames<K>;
+type ModelFilterKeys<K extends FactoryName> = Extract<keyof FactoryAttributes<K>, ModelColumnNames<K>>;
+type ModelFilterValues<K extends FactoryName> = Factories[K] extends { modelFilters: infer Filters }
+  ? Filters
+  : { [C in ModelFilterKeys<K>]?: C extends keyof Factories[K]["model"] ? Factories[K]["model"][C] : FactoryAttributes<K>[C] };
+type ModelFilters<K extends FactoryName> = [keyof ModelFilterValues<K>] extends [never]
+  ? Record<string, never>
+  : { [C in keyof ModelFilterValues<K>]?: ModelFilterValues<K>[C] | null };
 export interface ModelQuery<K extends FactoryName> {
-  where(attrs: FactoryAttributes<K>): ModelQuery<K>;
+  where(attrs: ModelFilters<K>): ModelQuery<K>;
   where<C extends ModelColumn<K>>(column: C, value: Factories[K]["model"][C] | null): ModelQuery<K>;
   where<C extends ModelColumn<K>>(column: C, operator: ModelWhereOperator, value: unknown): ModelQuery<K>;
   whereIn<C extends ModelColumn<K>>(column: C, values: readonly Factories[K]["model"][C][]): ModelQuery<K>;
@@ -62,9 +79,9 @@ export interface ModelQuery<K extends FactoryName> {
   whereNotNull(column: ModelColumn<K>): ModelQuery<K>;
   orderBy(column: ModelColumn<K>, direction?: "asc" | "desc"): ModelQuery<K>;
   limit(n: number): ModelQuery<K>;
-  first(): Promise<FactoryModel<K> | null>;
-  firstOrFail(): Promise<FactoryModel<K>>;
-  get(): Promise<FactoryModel<K>[]>;
+  first(): Promise<ModelResult<K> | null>;
+  firstOrFail(): Promise<ModelResult<K>>;
+  get(): Promise<ModelResult<K>[]>;
   pluck<C extends ModelColumn<K>>(column: C): Promise<Factories[K]["model"][C][]>;
   value<C extends ModelColumn<K>>(column: C): Promise<Factories[K]["model"][C] | null>;
   count(): Promise<number>;

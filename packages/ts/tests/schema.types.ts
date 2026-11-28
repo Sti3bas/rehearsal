@@ -1,12 +1,14 @@
-import { test, type FactoryModelRef } from "@sti3bas/rehearsal";
+import { test, type FactoryModel, type FactoryModelRef, type ModelResult } from "@sti3bas/rehearsal";
 import { expectTypeOf } from "vitest";
 
 declare module "@sti3bas/rehearsal" {
   interface RehearsalSchema {
     factories: {
       Listing: {
-        attributes: { title?: string; price?: number };
-        model: { id: number; title?: string; price?: number };
+        attributes: { title?: string; price?: number; display_title?: string; published_at?: number };
+        model: { id: number; title?: string; price?: number; summary?: string; published_at?: string | null };
+        modelColumns: "id" | "price" | "title" | "published_at";
+        modelFilters: { id?: number; title?: string; price?: number; published_at?: string | null };
         states: {
           sold: [];
           soldTo: [buyer: FactoryModelRef<"User">, soldAt?: string | Date | null];
@@ -22,12 +24,14 @@ declare module "@sti3bas/rehearsal" {
       StandaloneFactoryModel: {
         attributes: { active?: boolean | null; id?: number };
         model: { id: number; active?: boolean | null };
+        factoryRequired: "active";
         states: {};
         relations: {};
       };
     };
     operations: {
       "listing.sell": { input: { id: number }; output: { sold: boolean } };
+      "model.partial": { input: Record<string, never>; output: ModelResult<"StandaloneFactoryModel"> };
       "stats.total": { input: Record<string, never>; output: number };
     };
     artisan: { "listings:sync": { force: boolean } };
@@ -53,7 +57,12 @@ test("generated types reach the Playwright fixture", async ({ laravel }) => {
   expectTypeOf(user.name).toEqualTypeOf<string | undefined>();
   expectTypeOf(listings[0].id).toEqualTypeOf<number>();
   const discovered = await laravel.create("StandaloneFactoryModel", { attrs: { active: true } });
-  expectTypeOf(discovered.active).toEqualTypeOf<boolean | null | undefined>();
+  expectTypeOf(discovered.active).toEqualTypeOf<boolean | null>();
+  expectTypeOf<FactoryModel<"StandaloneFactoryModel" | "User">>()
+    .toEqualTypeOf<FactoryModel<"StandaloneFactoryModel"> | FactoryModel<"User">>();
+  expectTypeOf((await laravel.call("model.partial")).active).toEqualTypeOf<boolean | null | undefined>();
+  expectTypeOf((await laravel.model("StandaloneFactoryModel").firstOrFail()).active)
+    .toEqualTypeOf<boolean | null | undefined>();
 
   const fluentUser = await laravel.factory("User").create({ name: "Ada" });
   const fluentListing = await laravel.factory("Listing")
@@ -68,7 +77,16 @@ test("generated types reach the Playwright fixture", async ({ laravel }) => {
   expectTypeOf(second.title).toEqualTypeOf<string | undefined>();
   const many = await laravel.factory("Listing").count(3).sold().create((_, i) => ({ title: `L${i}` }));
   expectTypeOf(many[0].id).toEqualTypeOf<number>();
+  await laravel.factory("Listing").create({ display_title: "Chair", published_at: 1_700_000_000 });
+  await laravel.model("Listing").where({ title: "Chair" }).where("price", 10).get();
+  laravel.model("Listing").where({ published_at: "2023-11-14 22:13:20" });
 
+  // @ts-expect-error factory write types do not apply to query filters
+  laravel.model("Listing").where({ published_at: 1_700_000_000 });
+  // @ts-expect-error factory-only setter is not a database column
+  laravel.model("Listing").where({ display_title: "Chair" });
+  // @ts-expect-error serialized accessor is not a database column
+  laravel.model("Listing").where("summary", "Chair");
   // @ts-expect-error wrong model passed to soldTo
   await laravel.factory("Listing").soldTo(fluentListing).create();
   // @ts-expect-error unknown state on fluent builder

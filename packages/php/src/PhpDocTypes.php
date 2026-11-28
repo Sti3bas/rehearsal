@@ -626,9 +626,9 @@ final class PhpDocTypes
 
                     return 'FactoryModelRef<'.json_encode($alias, JSON_THROW_ON_ERROR).'> | number | string';
                 }
-                $usedHelpers['FactoryModel'] = true;
+                $usedHelpers['ModelResult'] = true;
 
-                return 'FactoryModel<'.json_encode($alias, JSON_THROW_ON_ERROR).'>';
+                return 'ModelResult<'.json_encode($alias, JSON_THROW_ON_ERROR).'>';
             }
 
             return $forInput ? 'number | string' : 'Record<string, unknown>';

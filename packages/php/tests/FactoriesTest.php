@@ -186,7 +186,8 @@ it('generates the discovered factory types without per-factory configuration', f
         expect(CustomFactoryModel::$hookCalls)->toBe(0);
         expect(file_get_contents($path))
             ->toContain('"StandaloneFactoryModel": { "attributes": { "active"?: boolean | null;')
-            ->toContain('"model": { "id": number; "active"?: boolean | null; }; "relations": {}; "states": {};')
+            ->toContain('"model": { "id": number; "active"?: boolean | null; };')
+            ->toContain('"modelFilters": { "active"?: boolean | null; "id"?: number; }; "relations": {}; "states": {};')
             ->toContain('"ExplicitBindingModel":', '"named": [];', '"switched": [];')
             ->not->toContain('"FactorylessModel":');
     } finally {
