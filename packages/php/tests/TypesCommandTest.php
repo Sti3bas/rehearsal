@@ -35,6 +35,7 @@ it('emits the public allowlists and best-effort model and operation types', func
     });
     $this->app->register(ServiceProvider::class);
     app(Operations::class)->register('listing.mark', ['id' => 'required|integer', 'note' => 'nullable|string'], static fn (): ?string => null);
+    app(Operations::class)->register('listing.partial', [], static fn (): TypeTestListing => (new TypeTestListing)->forceFill(['id' => 1]));
     $path = sys_get_temp_dir().'/rehearsal-types-'.bin2hex(random_bytes(8)).'.d.ts';
     try {
         $this->artisan('rehearsal:types', ['path' => $path, '--database' => 'rehearsal_types'])->assertSuccessful();
@@ -45,6 +46,7 @@ it('emits the public allowlists and best-effort model and operation types', func
             ->toContain('declare module "@sti3bas/rehearsal"', '"Listing":', '"price"?: number | null;', '"secret"?: string | null;')
             ->toContain('"model": { "id": number;', '"status"?: "active" | "sold";', '"states": { "sold": []; };', '"seller": "User";')
             ->toContain('"listing.mark": { input: { "id": number; "note"?: string | null; }; output: string | null }')
+            ->toContain('import type { ModelResult } from "@sti3bas/rehearsal";', '"listing.partial": { input: Record<string, never>; output: ModelResult<"Listing"> }')
             ->toContain('"reindex": { "force"?: boolean; }', '"schedules": "expiry";', '"faultPaths": "/listings/**";')
             ->not->toContain('not exported');
         expect($listing)

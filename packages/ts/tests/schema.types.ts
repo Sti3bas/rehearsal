@@ -1,4 +1,4 @@
-import { test, type FactoryModelRef } from "@sti3bas/rehearsal";
+import { test, type FactoryModelRef, type ModelResult } from "@sti3bas/rehearsal";
 import { expectTypeOf } from "vitest";
 
 declare module "@sti3bas/rehearsal" {
@@ -29,6 +29,7 @@ declare module "@sti3bas/rehearsal" {
     };
     operations: {
       "listing.sell": { input: { id: number }; output: { sold: boolean } };
+      "model.partial": { input: Record<string, never>; output: ModelResult<"StandaloneFactoryModel"> };
       "stats.total": { input: Record<string, never>; output: number };
     };
     artisan: { "listings:sync": { force: boolean } };
@@ -55,6 +56,7 @@ test("generated types reach the Playwright fixture", async ({ laravel }) => {
   expectTypeOf(listings[0].id).toEqualTypeOf<number>();
   const discovered = await laravel.create("StandaloneFactoryModel", { attrs: { active: true } });
   expectTypeOf(discovered.active).toEqualTypeOf<boolean | null>();
+  expectTypeOf((await laravel.call("model.partial")).active).toEqualTypeOf<boolean | null | undefined>();
   expectTypeOf((await laravel.model("StandaloneFactoryModel").firstOrFail()).active)
     .toEqualTypeOf<boolean | null | undefined>();
 
