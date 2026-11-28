@@ -13,8 +13,8 @@ hero:
       text: Get started
       link: /guide/getting-started
     - theme: alt
-      text: How isolation works
-      link: /concepts/isolation
+      text: Install
+      link: /guide/installation
 
 features:
   - title: Parallel by design
@@ -28,5 +28,5 @@ features:
     link: /guide/extending
   - title: Test with real services
     details: Add Mailpit, Laravel Scout, or Reverb when you need to verify email, search, or broadcast behavior.
-    link: /guide/services
+    link: /integrations/
 ---
