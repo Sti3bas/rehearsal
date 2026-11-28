@@ -12,7 +12,7 @@ npm install -D @sti3bas/rehearsal @playwright/test
 
 See the [project README](https://github.com/Sti3bas/rehearsal#readme) for the complete quickstart, including the [Packagist package](https://packagist.org/packages/sti3bas/rehearsal).
 
-On Nuxt 4, add `modules: ["@sti3bas/rehearsal/nuxt"]` to `nuxt.config.ts` and pass `$fetch: useRehearsalFetch()` to Laravel-facing `useFetch` calls. Enable forwarding only in the test server with `NUXT_REHEARSAL_ENABLED=true`. See the [Nuxt setup](https://github.com/Sti3bas/rehearsal#nuxt-4) for the defaults and overrides.
+On Nuxt 4, add `modules: ["@sti3bas/rehearsal/nuxt"]` to `nuxt.config.ts` and pass `$fetch: useRehearsalFetch()` to Laravel-facing `useFetch` calls. Enable forwarding only in the test server with `NUXT_REHEARSAL_ENABLED=true`. See the [Nuxt setup](https://sti3bas.github.io/rehearsal/guide/ssr.html#nuxt-4) for the defaults and overrides.
 
 With forwarding enabled, Node Nitro 2 routes can use ordinary `$fetch` or `ofetch` to the configured Laravel origin. Automatic forwarding is not available on Nitro 3. For Typesense InstantSearch, opt in with `NUXT_REHEARSAL_TYPESENSE=true` and use `useTypesenseInstantSearch()` to configure your adapter and index names. Use `laravelServer({ server: "frankenphp" })` to run the managed stack on an installed FrankenPHP executable.
 

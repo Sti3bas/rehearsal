@@ -62,3 +62,9 @@ php artisan vendor:publish --tag=rehearsal-config
 ```
 
 Use the [configuration guide](./configuration) to choose your database and environment, or [generate types](../concepts/factories#generate-types-from-your-laravel-app) once your first test runs.
+
+## When to use something else
+
+- Choose **Laravel Dusk** or **Pest Browser Testing** if you want to write browser tests in PHP alongside your Laravel tests.
+- Use **Playwright on its own** if you already provision isolated state outside the runner, or your tests only use public interfaces and don't need Laravel fixtures.
+- Choose **Rehearsal** if you want native Playwright Test in TypeScript with Laravel state reset and optional service integrations for parallel workers.
