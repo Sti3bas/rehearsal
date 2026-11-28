@@ -42,6 +42,15 @@ nuxt("rejects browser and SSR fetches for a network error", async ({ nuxt, page,
   expect(await (await page.goto(nuxtURL + "/api/fake-network"))?.json()).toEqual({ status: 200 });
 });
 
+nuxt("leaves unmatched frontend scripts to browser asset routes", async ({ nuxt, page, baseURL, nuxtURL, context }) => {
+  const script = nuxtURL + "/test-asset.js";
+  await context.route(script, (route) => route.fulfill({ body: "window.rehearsalAssetLoaded = true;" }));
+  await nuxt.fake({ [`GET ${baseURL}/state`]: { networkError: true } });
+  await page.goto(nuxtURL!);
+  await page.addScriptTag({ url: script });
+  expect(await page.evaluate(() => Reflect.get(window, "rehearsalAssetLoaded"))).toBe(true);
+});
+
 nuxt("forwards an SSR replacement body to the real destination on a fake miss", async ({ nuxt, page, baseURL, nuxtURL }) => {
   await nuxt.fake({ [`GET ${baseURL}/state`]: { json: { users: ["Unrelated"] } } });
   expect(await (await page.goto(nuxtURL + "/api/fake-echo"))?.json()).toEqual({ body: "replacement" });

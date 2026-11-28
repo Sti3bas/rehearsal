@@ -164,7 +164,8 @@ export class NuxtFakes {
         return route.fulfill({ status, headers: Object.fromEntries(responseHeaders), body });
       }
     }
-    if (url.origin !== this.frontend.origin || !this.rules.length) return route.fallback();
+    if (url.origin !== this.frontend.origin || !this.rules.length ||
+      ["script", "stylesheet", "font", "eventsource"].includes(request.resourceType())) return route.fallback();
     const { port, token, id } = await this.connection!;
     headers.set(fakeBridgeHeader, [port, token, id].join("."));
     const response = await route.fetch({ headers: Object.fromEntries(headers), maxRedirects: 0 });
