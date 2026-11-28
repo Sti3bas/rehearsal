@@ -8,6 +8,8 @@ nuxt("matches Nuxt fake root URLs without a trailing slash", async ({ nuxt, page
   await nuxt.fake({ [`GET ${baseURL}`]: { body: "Fake root" } });
   expect(await (await page.request.get(baseURL!)).text()).toBe("Rehearsal");
   expect(await (await page.goto(baseURL!))?.text()).toBe("Fake root");
+  await nuxt.fake({ [`GET ${baseURL}*`]: { body: "Fake wildcard" } });
+  expect(await (await page.goto(baseURL! + "/state"))?.text()).toBe("Fake wildcard");
 });
 
 nuxt("keeps fakes on a same-origin Nuxt redirect", async ({ nuxt, page, baseURL, nuxtURL }) => {
