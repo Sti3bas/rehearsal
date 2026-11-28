@@ -2,6 +2,7 @@ import { test as base, type APIRequestContext } from "@playwright/test";
 import { managedBrowsers, type NewBrowser } from "./browser.js";
 import { Laravel, startAttempt } from "./client.js";
 import { bindOperations, type BoundOperations, type OperationDefinitions } from "./extensions.js";
+import { NuxtFakes } from "./nuxt-fakes.js";
 import { injectReverb, Reverb } from "./reverb.js";
 import { loopback, managedLaunch, protocol } from "./transport.js";
 
@@ -89,6 +90,21 @@ export const reverbTest = test.extend<{ reverb: Reverb }>({
     }),
 });
 
+export const nuxtTest = base.extend<{ nuxt: NuxtFakes; nuxtURL?: string }>({
+  nuxtURL: [undefined, { option: true }],
+  nuxt: async ({ page, baseURL, nuxtURL }, use) => {
+    const frontend = nuxtURL ?? baseURL;
+    if (!frontend) throw new Error("Rehearsal Nuxt fakes require baseURL or nuxtURL.");
+    const nuxt = new NuxtFakes(page, frontend);
+    try {
+      await use(nuxt);
+    } finally {
+      await nuxt.close();
+    }
+  },
+});
+
+export { passthrough, type NuxtFakeHandler, type NuxtFakePattern, type NuxtFakeResponse, type NuxtFakeRule, type NuxtFakeRules } from "./nuxt-fakes.js";
 export { expect } from "@playwright/test";
 export type { NewBrowser, NewBrowserOptions, NewBrowserSession } from "./browser.js";
 export { Laravel, type FactoryCall, type FactoryDefinition, type TypesenseClientConfig } from "./client.js";

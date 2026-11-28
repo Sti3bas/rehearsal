@@ -5,6 +5,10 @@ import type { AddressInfo } from "node:net";
 export const fakeBridgeHeader = "x-rehearsal-fake";
 export const fakeBridgePath = "/_rehearsal/fake";
 
+export function isLoopbackPeer(address?: string) {
+  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+}
+
 export interface WireRequest {
   url: string;
   method: string;

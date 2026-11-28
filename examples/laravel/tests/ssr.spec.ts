@@ -1,4 +1,45 @@
-import { expect, test } from "@sti3bas/rehearsal";
+import { mergeTests } from "@playwright/test";
+import { expect, nuxtTest, passthrough, test } from "@sti3bas/rehearsal";
+
+const nuxt = mergeTests(test, nuxtTest);
+nuxt.use({ nuxtURL: "http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT });
+
+for (const name of ["Ada", "Grace"]) {
+  nuxt("shares runtime Nuxt fake handlers between SSR and the browser for " + name, async ({ nuxt, page, baseURL, nuxtURL }) => {
+    let hits = 0;
+    await nuxt.fake({
+      [`GET ${baseURL}/state`]: (request) => {
+        if (new URL(request.url).searchParams.has("real")) return passthrough;
+        return {
+          headers: { "access-control-allow-origin": "*" },
+          json: { users: [name], hit: ++hits },
+        };
+      },
+    });
+    const response = await page.goto(nuxtURL + "/api/state");
+    expect(response?.ok()).toBe(true);
+    const { global, imported, redirect, proxyHeader } = await response!.json();
+    expect([global.hit, imported.hit].sort()).toEqual([1, 2]);
+    expect(global.users).toEqual([name]);
+    expect(imported.users).toEqual([name]);
+    expect(redirect).toBe(302);
+    expect(proxyHeader).toBeNull();
+    const state = () => page.evaluate(async (url) => (await fetch(url)).json(), baseURL + "/state");
+    expect(await state()).toEqual({ users: [name], hit: 3 });
+    await nuxt.fake({
+      [`GET ${baseURL}/state`]: [
+        { headers: { "access-control-allow-origin": "*" }, json: { users: ["first"] } },
+        { headers: { "access-control-allow-origin": "*" }, json: { users: ["second"] } },
+      ],
+    });
+    expect(await state()).toEqual({ users: ["first"] });
+    const sequence = await (await page.goto(nuxtURL + "/api/state"))!.json();
+    expect(sequence.global.users).toEqual(["second"]);
+    expect(sequence.imported.users).toEqual(["second"]);
+    await nuxt.fake({ [`GET ${baseURL}/state`]: passthrough });
+    expect((await (await page.goto(nuxtURL + "/api/state"))!.json()).global.users).toEqual(["Baseline"]);
+  });
+}
 
 for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
   test("authenticates Sanctum from Nuxt and renders " + name + " on the server", async ({ laravel, page, baseURL, request }) => {
