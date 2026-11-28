@@ -67,6 +67,8 @@ for (const name of ["Ada", "Grace"]) {
 
 nuxt("holds SSR and browser requests until released and navigates with router state", async ({ nuxt, page, baseURL, nuxtURL }) => {
   await page.goto(nuxtURL!);
+  await nuxt.navigate(page, "/?preview=oak%20table", { state: { probe: "normalized" } });
+  expect(await page.evaluate(() => history.state.probe)).toBe("normalized");
   await nuxt.navigate(page, "/?preview=1#client", { state: { probe: "router" }, expect: /preview=1#client$/ });
   expect(await page.evaluate(() => history.state.probe)).toBe("router");
   const hold = nuxt.hold();

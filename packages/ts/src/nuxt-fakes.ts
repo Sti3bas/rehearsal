@@ -67,7 +67,7 @@ export class NuxtFakes {
 
   async navigate(page: Page, path: string, options: NuxtNavigationOptions = {}) {
     type Location = { path: string; query?: object; hash?: string; state?: NuxtNavigationOptions["state"] };
-    type Router = { push(to: string | Location): Promise<unknown>; resolve(to: string): Location };
+    type Router = { push(to: string | Location): Promise<unknown>; resolve(to: string | Location): Location & { href: string } };
     type VueRoot = Element & { __vue_app__?: { config: { globalProperties: { $router?: Router } } } };
     const router = await page.waitForFunction(() => {
       const roots = [document.querySelector("#__nuxt"), document.body, ...document.querySelectorAll("[data-v-app]")];
@@ -76,16 +76,19 @@ export class NuxtFakes {
         if (router) return router;
       }
     });
+    let href: string;
     try {
-      await router.evaluate((router, { path, state }) => {
-        if (!state) return router!.push(path);
+      href = await router.evaluate(async (router, { path, state }) => {
         const { path: pathname, query, hash } = router!.resolve(path);
-        return router!.push({ path: pathname, query, hash, state });
+        const destination = state ? { path: pathname, query, hash, state } : path;
+        const { href } = router!.resolve(destination);
+        await router!.push(destination);
+        return href;
       }, { path, state: options.state });
     } finally {
       await router.dispose();
     }
-    const target = options.expect ?? path;
+    const target = options.expect ?? href;
     await expect(page).toHaveURL(typeof target === "string" ? new URL(target, this.frontend).href : target);
   }
 
