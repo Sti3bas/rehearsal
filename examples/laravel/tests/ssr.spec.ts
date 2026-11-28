@@ -4,6 +4,13 @@ import { expect, nuxtTest, passthrough, test } from "@sti3bas/rehearsal";
 const nuxt = mergeTests(test, nuxtTest);
 nuxt.use({ nuxtURL: "http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT });
 
+nuxt("keeps fakes on a same-origin Nuxt redirect", async ({ nuxt, page, baseURL, nuxtURL }) => {
+  await nuxt.fake({ [`GET ${baseURL}/state`]: { json: { users: ["Redirected"] } } });
+  const response = await page.goto(nuxtURL + "/api/fake-redirect");
+  expect(page.url()).toBe(nuxtURL + "/api/state");
+  expect((await response!.json()).global.users).toEqual(["Redirected"]);
+});
+
 for (const name of ["Ada", "Grace"]) {
   nuxt("shares runtime Nuxt fake handlers between SSR and the browser for " + name, async ({ nuxt, page, baseURL, nuxtURL }) => {
     let hits = 0;

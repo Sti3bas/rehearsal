@@ -106,6 +106,13 @@ export class NuxtFakes {
     headers.set(fakeBridgeHeader, [port, token, id].join("."));
     const response = await route.fetch({ headers: Object.fromEntries(headers), maxRedirects: 0 });
     try {
+      const location = response.headers()["location"];
+      const redirected = location && [301, 302, 303, 307, 308].includes(response.status()) ? URL.parse(location, url) : null;
+      if (redirected?.origin === this.frontend.origin && !redirected.username && !redirected.password &&
+          request.isNavigationRequest() && request.method() === "GET") {
+        const navigation = route as Route & { _redirectNavigationRequest?: (url: string) => Promise<void> };
+        if (navigation._redirectNavigationRequest) return await navigation._redirectNavigationRequest(redirected.href);
+      }
       await route.fulfill({ response });
     } finally {
       await response.dispose();
