@@ -12,12 +12,16 @@ type Artisan = Schema<"artisan", Record<string, Row>>;
 
 export type FactoryName = keyof Factories & string;
 export type FactoryAttributes<K extends FactoryName> = Factories[K]["attributes"];
-export type ModelResult<K extends FactoryName> = Factories[K]["model"] & { readonly [rehearsalModel]?: K };
-export type FactoryModel<K extends FactoryName> = ModelResult<K> & (
-  Factories[K] extends { factoryRequired: infer RequiredKeys }
-    ? Required<Pick<Factories[K]["model"], Extract<RequiredKeys, keyof Factories[K]["model"]>>>
-    : unknown
-);
+export type ModelResult<K extends FactoryName> = K extends FactoryName
+  ? Factories[K]["model"] & { readonly [rehearsalModel]?: K }
+  : never;
+export type FactoryModel<K extends FactoryName> = K extends FactoryName
+  ? ModelResult<K> & (
+    Factories[K] extends { factoryRequired: infer RequiredKeys }
+      ? Required<Pick<Factories[K]["model"], Extract<RequiredKeys, keyof Factories[K]["model"]>>>
+      : unknown
+  )
+  : never;
 export type FactoryModelRef<K extends FactoryName = FactoryName> = { readonly id: number | string; readonly [rehearsalModel]?: K };
 export type FactoryStateMap<K extends FactoryName> =
   [Factories[K]["states"]] extends [never]
