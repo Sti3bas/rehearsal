@@ -10,3 +10,4 @@ composer.lock
 .env.playwright
 .env.rehearsal
 .rehearsal/
+docs/.vitepress/cache/
