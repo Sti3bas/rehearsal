@@ -26,19 +26,21 @@ export default defineNitroPlugin(({ h3App }) => {
     const target = URL.parse(input instanceof Request ? input.url : input);
     const state = context.getStore();
     const control = target?.origin === origin.origin && /^\/_rehearsal(?:\/|$)/.test(target.pathname);
+    const forward = (options) => {
+      if (target?.origin !== origin.origin || target.username || target.password || control || !state?.marker) {
+        return fetch(input, options);
+      }
+      const headers = new Headers(options?.headers ?? (input instanceof Request ? input.headers : undefined));
+      headers.delete(capabilityHeader);
+      headers.set(markerHeader, state.marker);
+      return fetch(input, { ...options, headers, redirect: "manual" });
+    };
     if (state?.proxy && target && !target.username && !target.password && !control &&
         ["http:", "https:"].includes(target.protocol)) {
-      const mocked = await proxyNuxtFetch(fetch, state.proxy, input, init);
+      const mocked = await proxyNuxtFetch(fetch, state.proxy, input, init,
+        init?.body instanceof ReadableStream ? (request) => forward({ ...init, body: request.body }) : undefined);
       if (mocked) return mocked;
     }
-    if (target?.origin !== origin.origin || target.username || target.password || control) return fetch(input, init);
-
-    const marker = state?.marker;
-    if (!marker) return fetch(input, init);
-
-    const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
-    headers.delete(capabilityHeader);
-    headers.set(markerHeader, marker);
-    return fetch(input, { ...init, headers, redirect: "manual" });
+    return forward(init);
   };
 });

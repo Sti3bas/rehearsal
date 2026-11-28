@@ -76,6 +76,18 @@ nuxt("forwards an SSR replacement body to the real destination on a fake miss", 
   expect(await (await page.goto(nuxtURL + "/api/fake-echo"))?.json()).toEqual({ body: "replacement" });
 });
 
+nuxt("forwards the streamed replacement body after an SSR callback returns passthrough", async ({ nuxt, page, baseURL, nuxtURL }) => {
+  const bodies: string[] = [];
+  await nuxt.fake({
+    [`POST ${baseURL}/api/probe/echo`]: async (request) => {
+      bodies.push(await request.text());
+      return passthrough;
+    },
+  });
+  expect(await (await page.goto(nuxtURL + "/api/fake-echo?stream=1"))?.json()).toEqual({ body: "streamed replacement" });
+  expect(bodies).toEqual(["streamed replacement"]);
+});
+
 for (const name of ["Ada", "Grace"]) {
   nuxt("shares runtime Nuxt fake handlers between SSR and the browser for " + name, async ({ nuxt, page, baseURL, nuxtURL }) => {
     let hits = 0;
