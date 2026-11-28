@@ -8,6 +8,20 @@ import { loopback } from "../src/transport.js";
 import { typesenseInstantSearch } from "../src/typesense.js";
 
 describe("client", () => {
+  it("fails fixture teardown with the original Laravel fake callback error", async () => {
+    const post = vi.fn().mockResolvedValue({ ok: () => true, json: async () => ({ data: null }) });
+    const client = new Laravel("http://127.0.0.1:8100", { post } as unknown as APIRequestContext, "cap", "attempt");
+    const error = new Error("callback assertion failed");
+    await client.fake("GET /state", () => { throw error; });
+    const { port, token, id } = post.mock.calls[0][1].data.data.callback;
+    const response = await fetch(`http://127.0.0.1:${port}/_rehearsal/fake`, {
+      method: "POST", headers: { "x-rehearsal-fake": token },
+      body: JSON.stringify({ id, url: "http://127.0.0.1:8100/state", method: "GET", headers: [] }),
+    });
+    expect(response.status).toBe(500);
+    await expect(client.disposeFakes()).rejects.toBe(error);
+  });
+
   it("starts a slot with a capability, then batches factory items once in order", async () => {
     const post = vi.fn()
       .mockResolvedValueOnce({ ok: () => true, json: async () => ({ marker: "attempt", resetMs: {} }) })

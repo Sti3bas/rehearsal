@@ -41,6 +41,7 @@ export class Laravel {
   private pages = new Set<Page>();
   private time?: Date;
   private fakeBridge = new FakeBridge();
+  private callbackFailure?: { error: unknown };
   readonly queue = new Queue(this);
   readonly http = {
     fake: (rules: HttpFakeRules, options: { preventStrayRequests?: boolean } = {}) =>
@@ -117,15 +118,23 @@ export class Laravel {
     this.fakeBridge.clear();
   }
 
-  disposeFakes() {
-    return this.fakeBridge.close();
+  async disposeFakes() {
+    await this.fakeBridge.close();
+    if (this.callbackFailure) throw this.callbackFailure.error;
   }
 
   fake<const T extends FakeTarget>(target: T, ...args: FakeArguments<NoInfer<T>>): Promise<null>;
   async fake(target: FakeTarget, response: FakeResponse | readonly FakeResponse[] | FakeCallback) {
     const pattern = fakeRoutePattern(target, this.origin);
     if (typeof response === "function") {
-      const callback = await this.fakeBridge.register(async (request) => encodeRouteResponse(await response(request)));
+      const callback = await this.fakeBridge.register(async (request) => {
+        try {
+          return encodeRouteResponse(await response(request));
+        } catch (error) {
+          this.callbackFailure ??= { error };
+          throw error;
+        }
+      });
       return this.operation<null>("route.fake", { ...pattern, callback });
     }
     const responses: readonly FakeResponse[] = "length" in response ? response : [response];
