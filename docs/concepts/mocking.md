@@ -37,7 +37,7 @@ await laravel.fake("GET /api/listings", (request) => ({
 await laravel.clearFakes();
 ```
 
-Use this when browser and SSR requests should reach Laravel but receive a controlled response before the route handler runs. Routes are discovered by default; configure `rehearsal.fake_routes` to restrict them. Use an uppercase method and path, or pass a structural `{ url, method }` object such as the result of a Wayfinder route call. A generated route key uses `*` for path parameters; pass a concrete route object to target one URL.
+Use this when browser and SSR requests should reach Laravel but receive a controlled response before the route handler runs. Routes are discovered by default; configure `rehearsal.fake_routes` to restrict them. Use an uppercase method and path, or pass a structural `{ url, method }` object such as the result of a Wayfinder route call. A generated route key uses `*` for a single path segment and `**` for a catch-all that spans segments (for example, `GET /files/**`). Pass a concrete route object to target one URL.
 
 Generate declarations with [`rehearsal:types`](./factories#generate-types-from-your-laravel-app) to catch unknown route keys. For typed JSON, set the route's TypeScript response type in `rehearsal.fake_response_types` (for example, `'GET /api/listings' => '{ data: { id: number }[] }'`). The generated key and literal route objects select that response type. If a route helper returns only `url: string`, the compiler cannot identify the endpoint; the server still checks its method and URL. Use the generated key when you need JSON checking with such a helper.
 
