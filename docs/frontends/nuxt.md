@@ -55,6 +55,14 @@ Use a readiness route that doesn't need a Laravel request, so that Playwright ca
 export default defineEventHandler(() => ({ ready: true }));
 ```
 
+If your project still uses the starter's `<NuxtWelcome />`, replace `frontend/app/app.vue` with a root component that renders your pages:
+
+```vue [frontend/app/app.vue]
+<template>
+  <NuxtPage />
+</template>
+```
+
 Add a smoke page that fetches once on the server and fetches again on a click. The example URL stands in for an API dependency; the test supplies both responses.
 
 ```vue [frontend/app/pages/rehearsal-smoke.vue]
