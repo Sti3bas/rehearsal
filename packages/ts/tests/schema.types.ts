@@ -22,6 +22,7 @@ declare module "@sti3bas/rehearsal" {
       StandaloneFactoryModel: {
         attributes: { active?: boolean | null; id?: number };
         model: { id: number; active?: boolean | null };
+        factoryRequired: "active";
         states: {};
         relations: {};
       };
@@ -53,7 +54,9 @@ test("generated types reach the Playwright fixture", async ({ laravel }) => {
   expectTypeOf(user.name).toEqualTypeOf<string | undefined>();
   expectTypeOf(listings[0].id).toEqualTypeOf<number>();
   const discovered = await laravel.create("StandaloneFactoryModel", { attrs: { active: true } });
-  expectTypeOf(discovered.active).toEqualTypeOf<boolean | null | undefined>();
+  expectTypeOf(discovered.active).toEqualTypeOf<boolean | null>();
+  expectTypeOf((await laravel.model("StandaloneFactoryModel").firstOrFail()).active)
+    .toEqualTypeOf<boolean | null | undefined>();
 
   const fluentUser = await laravel.factory("User").create({ name: "Ada" });
   const fluentListing = await laravel.factory("Listing")

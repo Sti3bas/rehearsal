@@ -44,7 +44,7 @@ final class TypesCommand extends Command
         $usedHelpers = [];
         $factories = [];
         foreach ($allFactories as $alias => $definition) {
-            $factories[$alias] = $this->factory($definition, $registry->states($definition), $aliasesByClass, $usedHelpers);
+            $factories[$alias] = $this->factory($definition, $registry->states($definition), $registry->definitionKeys($definition), $aliasesByClass, $usedHelpers);
         }
         $calls = [];
         foreach ($operations->typeDefinitions() as $name => $definition) {
@@ -84,10 +84,11 @@ final class TypesCommand extends Command
 
     /**
      * @param  array<string, array{method: string, params: list<array{name: string, optional: bool, nullable: bool, types: list<array{kind: string, class?: string}>}>}>  $states
+     * @param  list<string>  $definitionKeys
      * @param  array<string, string>  $aliasesByClass
      * @param  array<string, true>  $usedHelpers
      */
-    private function factory(array $definition, array $states, array $aliasesByClass, array &$usedHelpers): string
+    private function factory(array $definition, array $states, array $definitionKeys, array $aliasesByClass, array &$usedHelpers): string
     {
         $class = $definition['model'];
         /** @var Model $model */
@@ -95,6 +96,7 @@ final class TypesCommand extends Command
         $attributes = array_fill_keys(array_unique([
             ...$model->getFillable(),
             ...array_keys($model->getAttributes()),
+            ...$definitionKeys,
         ]), 'unknown');
         foreach ($model->getDates() as $column) {
             $attributes[$column] = 'string | null';
@@ -135,6 +137,7 @@ final class TypesCommand extends Command
         }
         $attributes[$model->getKeyName()] = $this->phpType($model->getKeyType());
         preg_match_all('/@property(?:-read|-write)?\s+(\S+)\s+\$(\w+)/', (new \ReflectionClass($model))->getDocComment() ?: '', $properties, PREG_SET_ORDER);
+        $knownCasts = [];
         foreach ($model->getCasts() as $attribute => $cast) {
             $cast = explode(':', $cast, 2)[0];
             $type = match ($cast) {
@@ -144,6 +147,7 @@ final class TypesCommand extends Command
                 default => $this->phpType($cast),
             };
             if ($type !== 'unknown') {
+                $knownCasts[$attribute] = true;
                 $attributes[$attribute] = $attribute === $model->getKeyName() ? $type : "$type | null";
             }
         }
@@ -151,6 +155,9 @@ final class TypesCommand extends Command
         $input = $attributes;
         $output = $attributes;
         foreach ($properties as [$annotation, $type, $attribute]) {
+            if (isset($knownCasts[$attribute])) {
+                continue;
+            }
             if (! str_starts_with($annotation, '@property-read')) {
                 $input[$attribute] = $this->phpType($type);
             }
@@ -166,6 +173,7 @@ final class TypesCommand extends Command
         $input = array_replace($input, $types['attributes'] ?? []);
         $output = array_replace($output, $types['model'] ?? []);
         $required = array_intersect_key($output, array_flip([$model->getKeyName(), ...($types['required'] ?? [])]));
+        $factoryRequired = array_intersect_key(array_diff_key($output, $required), array_flip($definitionKeys));
 
         $stateShapes = [];
         foreach ($states as $stateName => $stateDef) {
@@ -175,6 +183,7 @@ final class TypesCommand extends Command
         return $this->shape([
             'attributes' => $this->shape([], $input),
             'model' => $this->shape($required, array_diff_key($output, $required)),
+            ...($factoryRequired === [] ? [] : ['factoryRequired' => $this->literals(array_keys($factoryRequired))]),
             'states' => $this->shape($stateShapes),
             'relations' => $this->shape(array_map($this->literal(...), $definition['relations'] ?? [])),
         ]);

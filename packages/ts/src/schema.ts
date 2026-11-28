@@ -12,7 +12,12 @@ type Artisan = Schema<"artisan", Record<string, Row>>;
 
 export type FactoryName = keyof Factories & string;
 export type FactoryAttributes<K extends FactoryName> = Factories[K]["attributes"];
-export type FactoryModel<K extends FactoryName> = Factories[K]["model"] & { readonly [rehearsalModel]?: K };
+type ModelResult<K extends FactoryName> = Factories[K]["model"] & { readonly [rehearsalModel]?: K };
+export type FactoryModel<K extends FactoryName> = ModelResult<K> & (
+  Factories[K] extends { factoryRequired: infer RequiredKeys }
+    ? Required<Pick<Factories[K]["model"], Extract<RequiredKeys, keyof Factories[K]["model"]>>>
+    : unknown
+);
 export type FactoryModelRef<K extends FactoryName = FactoryName> = { readonly id: number | string; readonly [rehearsalModel]?: K };
 export type FactoryStateMap<K extends FactoryName> =
   [Factories[K]["states"]] extends [never]
@@ -62,9 +67,9 @@ export interface ModelQuery<K extends FactoryName> {
   whereNotNull(column: ModelColumn<K>): ModelQuery<K>;
   orderBy(column: ModelColumn<K>, direction?: "asc" | "desc"): ModelQuery<K>;
   limit(n: number): ModelQuery<K>;
-  first(): Promise<FactoryModel<K> | null>;
-  firstOrFail(): Promise<FactoryModel<K>>;
-  get(): Promise<FactoryModel<K>[]>;
+  first(): Promise<ModelResult<K> | null>;
+  firstOrFail(): Promise<ModelResult<K>>;
+  get(): Promise<ModelResult<K>[]>;
   pluck<C extends ModelColumn<K>>(column: C): Promise<Factories[K]["model"][C][]>;
   value<C extends ModelColumn<K>>(column: C): Promise<Factories[K]["model"][C] | null>;
   count(): Promise<number>;
