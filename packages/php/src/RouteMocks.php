@@ -150,7 +150,7 @@ final class RouteMocks
             'headers' => ['x-rehearsal-fake' => $callback['token']],
             'json' => [
                 'id' => $callback['id'],
-                'url' => $request->fullUrl(),
+                'url' => $request->getSchemeAndHttpHost().$request->getRequestUri(),
                 'method' => $request->method(),
                 'headers' => $headers,
                 ...($body === '' || in_array($request->method(), ['GET', 'HEAD'], true) ? [] : ['body' => base64_encode($body)]),

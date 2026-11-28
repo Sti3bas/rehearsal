@@ -194,13 +194,13 @@ test("runs Laravel route fake callbacks in the Playwright test", async ({ larave
   const hits: string[] = [];
   await page.goto("/");
   await laravel.fake("GET /state", (request) => {
-    const name = new URL(request.url).searchParams.get("name") ?? "SSR";
+    const name = new URL(request.url).searchParams.getAll("name").join(" ") || "SSR";
     hits.push(name);
     return { json: { users: [name] } };
   });
-  expect(await page.evaluate(async () => (await (await fetch("/state?name=Browser")).json()).users)).toEqual(["Browser"]);
+  expect(await page.evaluate(async () => (await (await fetch("/state?name=Browser&name=Repeated")).json()).users)).toEqual(["Browser Repeated"]);
   expect(await (await page.request.get(frontend)).text()).toContain("<li>SSR</li>");
-  expect(hits).toEqual(["Browser", "SSR"]);
+  expect(hits).toEqual(["Browser Repeated", "SSR"]);
 });
 
 test.describe("route mocks on a reused slot", () => {
