@@ -203,6 +203,17 @@ test("runs Laravel route fake callbacks in the Playwright test", async ({ larave
   expect(hits).toEqual(["Browser Repeated", "SSR"]);
 });
 
+test("reads multipart fields and files in Laravel fake callbacks", async ({ laravel, page }) => {
+  await page.goto("/");
+  await laravel.fake("POST /login", async (request) => {
+    const form = await request.formData();
+    return { json: { value: form.get("fields[name]"), file: await (form.get("file") as File).text() } };
+  });
+  expect(await (await page.request.post("/login", {
+    multipart: { "fields[name]": "sample", file: { name: "sample.txt", mimeType: "text/plain", buffer: Buffer.from("file text") } },
+  })).json()).toEqual({ value: "sample", file: "file text" });
+});
+
 test.describe("route mocks on a reused slot", () => {
   test.describe.configure({ mode: "serial" });
   test("stubs a Laravel route", async ({ laravel, page }) => {

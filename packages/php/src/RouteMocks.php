@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Sti3bas\Rehearsal;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Psr7\MultipartStream;
+use GuzzleHttp\Psr7\Utils;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -146,6 +149,14 @@ final class RouteMocks
             }
         }
         $body = $request->getContent();
+        if ($body === '' && preg_match('/^multipart\/form-data\s*;.*?\bboundary=(?:"([^"]+)"|([^;\s]+))/i', $request->header('Content-Type', ''), $match)) {
+            $parts = [
+                ...self::multipartParts($request->request->all()),
+                ...self::multipartParts($request->files->all()),
+            ];
+            $body = (string) new MultipartStream($parts, $match[1] !== '' ? $match[1] : $match[2]);
+            $headers = array_values(array_filter($headers, static fn (array $pair) => $pair[0] !== 'content-length'));
+        }
         $response = (new Client)->post('http://127.0.0.1:'.$callback['port'].'/_rehearsal/fake', [
             'headers' => ['x-rehearsal-fake' => $callback['token']],
             'json' => [
@@ -161,6 +172,28 @@ final class RouteMocks
         ]);
 
         return json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
+    }
+
+    private static function multipartParts(array $values, ?string $prefix = null): array
+    {
+        $parts = [];
+        foreach ($values as $key => $value) {
+            $name = $prefix === null ? (string) $key : $prefix.'['.$key.']';
+            if (is_array($value)) {
+                array_push($parts, ...self::multipartParts($value, $name));
+            } elseif ($value instanceof UploadedFile && $value->isValid()) {
+                $parts[] = [
+                    'name' => $name,
+                    'contents' => Utils::tryFopen($value->getPathname(), 'rb'),
+                    'filename' => $value->getClientOriginalName(),
+                    'headers' => ['Content-Type' => $value->getClientMimeType()],
+                ];
+            } elseif (is_scalar($value)) {
+                $parts[] = ['name' => $name, 'contents' => (string) $value];
+            }
+        }
+
+        return $parts;
     }
 
     private static function claim(Attempt $attempt, string $method, string $target, bool $fake = false): ?array
