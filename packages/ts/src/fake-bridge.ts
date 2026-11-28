@@ -63,7 +63,7 @@ export class FakeBridge {
           const { id, url, method, headers, body } = JSON.parse(Buffer.concat(chunks).toString()) as WireRequest & { id: string };
           const handler = this.handlers.get(id);
           if (!handler) {
-            outgoing.writeHead(404).end();
+            outgoing.writeHead(200, { "content-type": "application/json" }).end("null");
             return;
           }
           const request = new Request(url, { method, headers, body: body === undefined ? undefined : Buffer.from(body, "base64") });

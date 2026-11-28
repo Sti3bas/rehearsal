@@ -124,6 +124,9 @@ final class RouteMocks
         }
         if (isset($rule['callback'])) {
             $rule = self::invokeCallback($rule['callback'], $request);
+            if ($rule === null) {
+                return null;
+            }
         }
         usleep(($rule['delay'] ?? 0) * 1000);
         $headers = $rule['headers'] ?? [];
@@ -137,7 +140,7 @@ final class RouteMocks
         return null;
     }
 
-    private static function invokeCallback(array $callback, Request $request): array
+    private static function invokeCallback(array $callback, Request $request): ?array
     {
         $headers = [];
         foreach ($request->headers->all() as $name => $values) {

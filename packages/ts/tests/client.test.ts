@@ -8,6 +8,26 @@ import { loopback } from "../src/transport.js";
 import { typesenseInstantSearch } from "../src/typesense.js";
 
 describe("client", () => {
+  it("lets a Laravel callback claimed before clearFakes pass through", async () => {
+    const post = vi.fn().mockResolvedValue({ ok: () => true, json: async () => ({ data: null }) });
+    const client = new Laravel("http://127.0.0.1:8100", { post } as unknown as APIRequestContext, "cap", "attempt");
+    const handler = vi.fn(() => ({ status: 503 }));
+    await client.fake("GET /state", handler);
+    const { port, token, id } = post.mock.calls[0][1].data.data.callback;
+    await client.clearFakes();
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/_rehearsal/fake`, {
+        method: "POST", headers: { "x-rehearsal-fake": token },
+        body: JSON.stringify({ id, url: "http://127.0.0.1:8100/state", method: "GET", headers: [] }),
+      });
+      expect(response.ok).toBe(true);
+      expect(await response.json()).toBeNull();
+      expect(handler).not.toHaveBeenCalled();
+    } finally {
+      await client.disposeFakes();
+    }
+  });
+
   it("fails fixture teardown with the original Laravel fake callback error", async () => {
     const post = vi.fn().mockResolvedValue({ ok: () => true, json: async () => ({ data: null }) });
     const client = new Laravel("http://127.0.0.1:8100", { post } as unknown as APIRequestContext, "cap", "attempt");
