@@ -6,6 +6,12 @@ test("keeps the browser bound across a redirect", async ({ page }) => {
   expect(await response?.json()).toMatchObject({ users: ["Baseline"] });
 });
 
+test("claims a Laravel route mock for a percent-encoded browser path and query", async ({ laravel, page }) => {
+  await laravel.route("/probe/café?color=grøn").respond({ body: "Unicode mock" });
+  const response = await page.goto("/probe/caf%c3%a9?color=gr%C3%B8n");
+  expect(await response?.text()).toBe("Unicode mock");
+});
+
 test("does not expose unlisted named connections to the application", async ({ page }) => {
   expect(await (await page.goto("/probe/outside-db"))?.json()).toEqual({ configured: false });
 });
