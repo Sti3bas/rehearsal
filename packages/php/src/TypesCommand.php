@@ -111,12 +111,19 @@ final class TypesCommand extends Command
         preg_match_all('/@property(?:-read|-write)?\s+(\S+)\s+\$(\w+)/', (new \ReflectionClass($model))->getDocComment() ?: '', $properties, PREG_SET_ORDER);
         $knownCasts = [];
         foreach ($model->getCasts() as $attribute => $cast) {
-            $cast = explode(':', $cast, 2)[0];
-            $type = match ($cast) {
-                'date', 'datetime', 'immutable_date', 'immutable_datetime', 'hashed', 'encrypted' => 'string',
+            [$name, $argument] = array_pad(explode(':', $cast, 2), 2, null);
+            $type = match ($name) {
+                'date', 'datetime', 'immutable_date', 'immutable_datetime', 'hashed' => 'string',
+                'encrypted' => match ($argument) {
+                    null => 'string',
+                    'array', 'json' => $this->phpType($argument),
+                    'object' => 'Record<string, unknown>',
+                    'collection' => 'unknown[]',
+                    default => 'unknown',
+                },
                 'timestamp' => 'number',
                 'collection' => 'unknown[]',
-                default => $this->phpType($cast),
+                default => $this->phpType($name),
             };
             if ($type !== 'unknown') {
                 $knownCasts[$attribute] = true;

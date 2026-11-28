@@ -57,7 +57,9 @@ it('emits the public allowlists and best-effort model and operation types', func
         expect($input)->toContain('"display_title"?: unknown;');
         expect($output)
             ->toContain('"modelColumns": "id" | "price" | "title" | "sku";')
+            ->toContain('"metadata"?: unknown[] | Record<string, unknown> | null;', '"settings"?: Record<string, unknown> | null;', '"tags"?: unknown[] | null;')
             ->not->toContain('"display_title"');
+        expect($input)->toContain('"metadata"?: unknown[] | Record<string, unknown> | null;');
         expect($dynamic)->not->toContain('"factoryRequired"');
     } finally {
         if (is_file($path)) {
@@ -66,7 +68,10 @@ it('emits the public allowlists and best-effort model and operation types', func
     }
 });
 
-/** @property \Illuminate\Support\Carbon|null $published_at */
+/**
+ * @property \Illuminate\Support\Carbon|null $published_at
+ * @property array|null $metadata
+ */
 final class TypeTestListing extends Model
 {
     protected $table = 'listings';
@@ -75,7 +80,13 @@ final class TypeTestListing extends Model
 
     protected $fillable = ['display_title'];
 
-    protected $casts = ['secret' => 'string', 'published_at' => 'datetime'];
+    protected $casts = [
+        'secret' => 'string',
+        'published_at' => 'datetime',
+        'metadata' => 'encrypted:array',
+        'settings' => 'encrypted:object',
+        'tags' => 'encrypted:collection',
+    ];
 
     public function setDisplayTitleAttribute(string $value): void
     {
