@@ -102,7 +102,10 @@ export class Laravel {
     })));
     if (primary) this.context ??= context;
     this.contexts.add(context);
-    context.once("close", () => this.contexts.delete(context));
+    context.once("close", () => {
+      this.contexts.delete(context);
+      if (this.context === context) this.context = undefined;
+    });
     if (this.patterns.length) await this.installRouteMocks(context);
   }
 

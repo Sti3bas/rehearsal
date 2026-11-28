@@ -70,20 +70,31 @@ export class NuxtFakes {
 
   async navigate(page: Page, path: string, options: NuxtNavigationOptions = {}) {
     type Location = { path: string; query?: object; hash?: string; state?: NuxtNavigationOptions["state"] };
-    type Router = { push(to: string | Location): Promise<unknown>; resolve(to: string | Location): Location & { href: string } };
+    type Router = {
+      currentRoute: { value: { fullPath: string } };
+      push(to: string | Location): Promise<unknown>;
+      resolve(to: string | Location): Location & { href: string };
+    };
     type VueRoot = Element & { __vue_app__?: { config: { globalProperties: { $router?: Router } } } };
     const router = await page.waitForFunction(() => {
-      const roots = [document.querySelector("#__nuxt"), document.body, ...document.querySelectorAll("[data-v-app]")];
-      for (const root of roots) {
-        const router = (root as VueRoot | null)?.__vue_app__?.config.globalProperties.$router;
-        if (router) return router;
+      const useNuxtApp = (window as Window & {
+        useNuxtApp?: () => { vueApp: { _container?: Element }; $router?: Router };
+      }).useNuxtApp;
+      try {
+        const app = useNuxtApp?.();
+        if (app?.vueApp._container && app.$router) return app.$router;
+      } catch {
       }
+      const root = (document.getElementById("__nuxt") ?? document.body) as VueRoot;
+      return root.__vue_app__?.config.globalProperties.$router;
     });
+    const documentURL = page.url();
     let href: string;
     try {
       href = await router.evaluate(async (router, { path, state }) => {
-        const { path: pathname, query, hash } = router!.resolve(path);
-        const destination = state ? { path: pathname, query, hash, state } : path;
+        const target = path.startsWith("#") ? router!.currentRoute.value.fullPath.split("#", 1)[0] + path : path;
+        const { path: pathname, query, hash } = router!.resolve(target);
+        const destination = state ? { path: pathname, query, hash, state } : target;
         const { href } = router!.resolve(destination);
         await router!.push(destination);
         return href;
@@ -92,7 +103,9 @@ export class NuxtFakes {
       await router.dispose();
     }
     const target = options.expect ?? href;
-    await expect(page).toHaveURL(typeof target === "string" ? new URL(target, this.frontend).href : target);
+    const base = options.expect === undefined || (typeof target === "string" && target.startsWith("#"))
+      ? documentURL : this.frontend;
+    await expect(page).toHaveURL(typeof target === "string" ? new URL(target, base).href : target);
   }
 
   async close() {
@@ -147,10 +160,9 @@ export class NuxtFakes {
   private intercept = async (route: Route, request: BrowserRequest) => {
     const url = new URL(request.url());
     const rule = this.match(request.method(), url);
-    const headers = new Headers(await request.allHeaders());
-    headers.delete(fakeBridgeHeader);
     if (rule) {
-      const input = new Headers(headers);
+      const input = new Headers(await request.allHeaders());
+      input.delete(fakeBridgeHeader);
       input.delete(markerHeader);
       input.delete(capabilityHeader);
       const body = request.postDataBuffer();
@@ -164,8 +176,9 @@ export class NuxtFakes {
         return route.fulfill({ status, headers: Object.fromEntries(responseHeaders), body });
       }
     }
-    if (url.origin !== this.frontend.origin || !this.rules.length ||
-      ["script", "stylesheet", "font", "eventsource"].includes(request.resourceType())) return route.fallback();
+    if (url.origin !== this.frontend.origin || !this.rules.length || !request.isNavigationRequest() ||
+      request.resourceType() !== "document") return route.fallback();
+    const headers = new Headers(await request.allHeaders());
     const { port, token, id } = await this.connection!;
     headers.set(fakeBridgeHeader, [port, token, id].join("."));
     const response = await route.fetch({ headers: Object.fromEntries(headers), maxRedirects: 0 });

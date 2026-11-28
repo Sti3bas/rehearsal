@@ -51,9 +51,41 @@ nuxt("leaves unmatched frontend scripts to browser asset routes", async ({ nuxt,
   expect(await page.evaluate(() => Reflect.get(window, "rehearsalAssetLoaded"))).toBe(true);
 });
 
+nuxt("streams unmatched browser fetches without attaching omitted cookies", async ({ nuxt, page, baseURL, nuxtURL, context }) => {
+  await context.addCookies([{ name: "probe", value: "present", url: nuxtURL! }]);
+  await nuxt.fake({ [`GET ${baseURL}/state`]: { json: { users: ["Unrelated"] } } });
+  await page.goto(nuxtURL!);
+  const firstEvent = (credentials: RequestCredentials) => page.evaluate(async (credentials) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5_000);
+    try {
+      const response = await fetch("/api/stream", { credentials, signal: controller.signal });
+      const { value } = await response.body!.getReader().read();
+      return new TextDecoder().decode(value);
+    } finally {
+      clearTimeout(timeout);
+      controller.abort();
+    }
+  }, credentials);
+  await expect(firstEvent("same-origin")).resolves.toBe("data: present\n\n");
+  await expect(firstEvent("omit")).resolves.toBe("data: no cookie\n\n");
+});
+
 nuxt("forwards an SSR replacement body to the real destination on a fake miss", async ({ nuxt, page, baseURL, nuxtURL }) => {
   await nuxt.fake({ [`GET ${baseURL}/state`]: { json: { users: ["Unrelated"] } } });
   expect(await (await page.goto(nuxtURL + "/api/fake-echo"))?.json()).toEqual({ body: "replacement" });
+});
+
+nuxt("forwards the streamed replacement body after an SSR callback returns passthrough", async ({ nuxt, page, baseURL, nuxtURL }) => {
+  const bodies: string[] = [];
+  await nuxt.fake({
+    [`POST ${baseURL}/api/probe/echo`]: async (request) => {
+      bodies.push(await request.text());
+      return passthrough;
+    },
+  });
+  expect(await (await page.goto(nuxtURL + "/api/fake-echo?stream=1"))?.json()).toEqual({ body: "streamed replacement" });
+  expect(bodies).toEqual(["streamed replacement"]);
 });
 
 for (const name of ["Ada", "Grace"]) {
@@ -93,8 +125,18 @@ for (const name of ["Ada", "Grace"]) {
   });
 }
 
+nuxt("resolves hash-only navigation against the current document", async ({ nuxt, page, nuxtURL }) => {
+  await page.goto(nuxtURL + "/?preview=oak");
+  await nuxt.navigate(page, "#client", { expect: "#client" });
+  await expect(page).toHaveURL(nuxtURL + "/?preview=oak#client");
+  await nuxt.navigate(page, "#next", { state: { probe: "fragment" } });
+  await expect(page).toHaveURL(nuxtURL + "/?preview=oak#next");
+  expect(await page.evaluate(() => history.state.probe)).toBe("fragment");
+});
+
 nuxt("holds SSR and browser requests until released and navigates with router state", async ({ nuxt, page, baseURL, nuxtURL }) => {
   await page.goto(nuxtURL!);
+  await expect(page.locator("#rehearsal-example")).toBeVisible();
   await nuxt.navigate(page, "/?preview=oak%20table", { state: { probe: "normalized" } });
   expect(await page.evaluate(() => history.state.probe)).toBe("normalized");
   await nuxt.navigate(page, "/?preview=1#client", { state: { probe: "router" }, expect: /preview=1#client$/ });

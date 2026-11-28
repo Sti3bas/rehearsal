@@ -13,6 +13,17 @@ test("reads the attempt user without a browser context", async ({ laravel }) => 
   await expect(laravel.user({ endpoint: "/state" })).resolves.toEqual({ name: "Attempt user" });
 });
 
+test("falls back to the attempt session after an explicitly bound context closes", async ({ laravel, browser }) => {
+  const context = await browser.newContext();
+  await laravel.fake("GET /state", { json: { name: "Attempt user" } });
+  try {
+    await expect(laravel.user({ context, endpoint: "/state" })).resolves.toEqual({ name: "Attempt user" });
+  } finally {
+    await context.close();
+  }
+  await expect(laravel.user({ endpoint: "/state" })).resolves.toEqual({ name: "Attempt user" });
+});
+
 test("reads the real Sanctum user from the isolated API session", async ({ laravel, newBrowser, request }) => {
   const { context } = await newBrowser();
   const attempt = (await context.cookies()).find(({ name }) => name === "rehearsal_attempt")!;

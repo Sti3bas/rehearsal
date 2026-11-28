@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { markerHeader } from "./transport.js";
 
 export interface RouteResponse {
@@ -46,11 +47,24 @@ export function routePattern(target: RouteTarget, origin: string) {
 }
 
 export function matchesRoute(rule: ReturnType<typeof routePattern>, url: URL, method: string) {
-  const regex = rule.path.split(/(\*\*|\*)/).map((part) =>
+  if (rule.method && rule.method !== method) return false;
+  const query = rule.path.indexOf("?");
+  const path = query === -1 ? rule.path : rule.path.slice(0, query);
+  return matchesRouteText(path, url.pathname) &&
+    (query === -1 || (url.search !== "" && matchesRouteText(rule.path.slice(query + 1), url.search.slice(1))));
+}
+
+function decodeRouteText(value: string) {
+  return Buffer.from(value).toString("latin1").replace(/%([89a-f][0-9a-f])/gi, (_, byte: string) =>
+    String.fromCharCode(parseInt(byte, 16)),
+  );
+}
+
+function matchesRouteText(pattern: string, candidate: string) {
+  const regex = decodeRouteText(pattern).split(/(\*\*|\*)/).map((part) =>
     part === "**" ? ".*" : part === "*" ? "[^/]*" : part.replace(/[|\\{}()[\]^$+?.]/g, "\\$&"),
   ).join("");
-  return (!rule.method || rule.method === method) &&
-    new RegExp("^" + regex + "$").test(url.pathname + (rule.path.includes("?") ? url.search : ""));
+  return new RegExp("^" + regex + "$").test(decodeRouteText(candidate));
 }
 
 export async function claimRoute(origin: string, marker: string, method: string, url: URL, fetcher = fetch, signal?: AbortSignal): Promise<EncodedRouteResponse | null> {

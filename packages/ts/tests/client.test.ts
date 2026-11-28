@@ -3,7 +3,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { APIRequestContext } from "@playwright/test";
 import { describe, expect, it, vi } from "vitest";
 import { Laravel, startAttempt } from "../src/client.js";
-import { routePattern } from "../src/routes.js";
+import { matchesRoute, routePattern } from "../src/routes.js";
 import { laravelServer } from "../src/server.js";
 import { loopback } from "../src/transport.js";
 import { typesenseInstantSearch } from "../src/typesense.js";
@@ -259,5 +259,15 @@ describe("client", () => {
     expect(routePattern(origin, origin)).toEqual({ path: "/", method: undefined });
     expect(routePattern(origin + "/", origin)).toEqual({ path: "/", method: undefined });
     expect(() => routePattern("http://127.0.0.1:8101", origin)).toThrow("Laravel origin");
+  });
+
+  it("compares browser routes with the same percent-decoded bytes as Laravel", () => {
+    const origin = "http://127.0.0.1:8100";
+    const matches = (pattern: string, path: string) =>
+      matchesRoute(routePattern(pattern, origin), new URL(path, origin), "GET");
+    expect(matches("/café?sort=grøn?x", "/caf%c3%a9?sort=gr%C3%B8n?x")).toBe(true);
+    expect(matches("/caf%c3%a9?sort=gr%c3%b8n", "/café?sort=grøn")).toBe(true);
+    expect(matches("/caf%C3%A9/%2A", "/café/value")).toBe(false);
+    expect(matches("/café**?sort=grøn", "/café?other=yes?sort=grøn")).toBe(false);
   });
 });

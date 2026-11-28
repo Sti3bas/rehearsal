@@ -19,6 +19,7 @@ export function nuxtProxyContext(request: { headers: Record<string, unknown>; so
 
 export async function proxyNuxtFetch(
   fetch: typeof globalThis.fetch, context: NonNullable<ReturnType<typeof nuxtProxyContext>>, input: RequestInfo | URL, init?: RequestInit,
+  passthrough?: (request: Request) => Promise<Response>,
 ) {
   const request = new Request(input instanceof Request && init?.body == null ? input.clone() : input, init);
   request.signal.throwIfAborted();
@@ -44,7 +45,7 @@ export async function proxyNuxtFetch(
   }
   if (!result.ok) throw new Error("Rehearsal Nuxt fake handler failed (HTTP " + result.status + ").");
   const reply = await result.json() as Parameters<typeof mockResponse>[0] | null;
-  if (!reply) return null;
+  if (!reply) return passthrough ? passthrough(request) : null;
   if (reply.delay) await wait(reply.delay, request.signal);
   if (reply.networkError) throw new TypeError("fetch failed");
   const { body, ...response } = mockResponse(reply);
