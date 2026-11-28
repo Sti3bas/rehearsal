@@ -93,48 +93,20 @@ final class TypesCommand extends Command
         $class = $definition['model'];
         /** @var Model $model */
         $model = new $class;
+        $defaults = $model->getAttributes();
         $attributes = array_fill_keys(array_unique([
             ...$model->getFillable(),
-            ...array_keys($model->getAttributes()),
-            ...$definitionKeys,
+            ...array_keys($defaults),
         ]), 'unknown');
         foreach ($model->getDates() as $column) {
             $attributes[$column] = 'string | null';
         }
-        $database = $this->option('database');
-        if (is_string($database) && $database !== '') {
-            foreach (Schema::connection($database)->getColumns($model->getTable()) as $column) {
-                $type = $this->columnType(strtolower($column['type_name']));
-                $attributes[$column['name']] = $column['nullable'] ? "$type | null" : $type;
-            }
-        } else {
-            $loaded = false;
-            $modelConnection = $model->getConnectionName();
-            try {
-                if (Schema::connection($modelConnection)->hasTable($model->getTable())) {
-                    foreach (Schema::connection($modelConnection)->getColumns($model->getTable()) as $column) {
-                        $type = $this->columnType(strtolower($column['type_name']));
-                        $attributes[$column['name']] = $column['nullable'] ? "$type | null" : $type;
-                    }
-                    $loaded = true;
-                }
-            } catch (Throwable) {
-            }
-            if (! $loaded) {
-                $ephemeral = $this->inMemorySchemaConnection();
-                if ($ephemeral !== null) {
-                    try {
-                        if (Schema::connection($ephemeral)->hasTable($model->getTable())) {
-                            foreach (Schema::connection($ephemeral)->getColumns($model->getTable()) as $column) {
-                                $type = $this->columnType(strtolower($column['type_name']));
-                                $attributes[$column['name']] = $column['nullable'] ? "$type | null" : $type;
-                            }
-                        }
-                    } catch (Throwable) {
-                    }
-                }
-            }
+        $columns = $this->columns($model);
+        foreach ($columns ?? [] as $column) {
+            $type = $this->columnType(strtolower($column['type_name']));
+            $attributes[$column['name']] = $column['nullable'] ? "$type | null" : $type;
         }
+        $columnNames = $columns === null ? null : array_column($columns, 'name');
         $attributes[$model->getKeyName()] = $this->phpType($model->getKeyType());
         preg_match_all('/@property(?:-read|-write)?\s+(\S+)\s+\$(\w+)/', (new \ReflectionClass($model))->getDocComment() ?: '', $properties, PREG_SET_ORDER);
         $knownCasts = [];
@@ -152,8 +124,14 @@ final class TypesCommand extends Command
             }
         }
 
-        $input = $attributes;
+        $input = $attributes + array_fill_keys($definitionKeys, 'unknown');
         $output = $attributes;
+        foreach ($definitionKeys as $attribute) {
+            if (($columnNames !== null && ! in_array($attribute, $columnNames, true))
+                || ($columnNames === null && ! array_key_exists($attribute, $defaults) && $this->hasAttributeMutator($model, $attribute))) {
+                unset($output[$attribute]);
+            }
+        }
         foreach ($properties as [$annotation, $type, $attribute]) {
             if (isset($knownCasts[$attribute])) {
                 continue;
@@ -173,6 +151,10 @@ final class TypesCommand extends Command
         $input = array_replace($input, $types['attributes'] ?? []);
         $output = array_replace($output, $types['model'] ?? []);
         $required = array_intersect_key($output, array_flip([$model->getKeyName(), ...($types['required'] ?? [])]));
+        $definitionKeys = array_filter(
+            array_intersect($definitionKeys, $columnNames ?? array_keys($defaults)),
+            fn (string $attribute) => ! $this->hasAttributeMutator($model, $attribute),
+        );
         $factoryRequired = array_intersect_key(array_diff_key($output, $required), array_flip($definitionKeys));
 
         $stateShapes = [];
@@ -184,9 +166,45 @@ final class TypesCommand extends Command
             'attributes' => $this->shape([], $input),
             'model' => $this->shape($required, array_diff_key($output, $required)),
             ...($factoryRequired === [] ? [] : ['factoryRequired' => $this->literals(array_keys($factoryRequired))]),
+            ...($columnNames === null ? [] : ['modelColumns' => $this->literals($columnNames)]),
             'states' => $this->shape($stateShapes),
             'relations' => $this->shape(array_map($this->literal(...), $definition['relations'] ?? [])),
         ]);
+    }
+
+    private function hasAttributeMutator(Model $model, string $attribute): bool
+    {
+        return $model->hasSetMutator($attribute) || $model->hasAttributeMutator($attribute);
+    }
+
+    private function columns(Model $model): ?array
+    {
+        $table = $model->getTable();
+        $database = $this->option('database');
+        if (is_string($database) && $database !== '') {
+            return Schema::connection($database)->getColumns($table) ?: null;
+        }
+
+        try {
+            $schema = Schema::connection($model->getConnectionName());
+            if ($schema->hasTable($table)) {
+                return $schema->getColumns($table);
+            }
+        } catch (Throwable) {
+        }
+
+        $ephemeral = $this->inMemorySchemaConnection();
+        if ($ephemeral !== null) {
+            try {
+                $schema = Schema::connection($ephemeral);
+                if ($schema->hasTable($table)) {
+                    return $schema->getColumns($table);
+                }
+            } catch (Throwable) {
+            }
+        }
+
+        return null;
     }
 
     /**

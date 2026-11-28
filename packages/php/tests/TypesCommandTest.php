@@ -34,6 +34,7 @@ it('emits the public allowlists and best-effort model and operation types', func
         $table->string('sku');
     });
     $this->app->register(ServiceProvider::class);
+    expect((new TypeTestListing)->forceFill(['display_title' => 'Chair'])->toArray())->toBe(['title' => 'Chair']);
     app(Operations::class)->register('listing.mark', ['id' => 'required|integer', 'note' => 'nullable|string'], static fn (): ?string => null);
     app(Operations::class)->register('listing.partial', [], static fn (): TypeTestListing => (new TypeTestListing)->forceFill(['id' => 1]));
     $path = sys_get_temp_dir().'/rehearsal-types-'.bin2hex(random_bytes(8)).'.d.ts';
@@ -42,6 +43,7 @@ it('emits the public allowlists and best-effort model and operation types', func
         $contents = file_get_contents($path);
         $listing = explode('"states":', explode('"Listing": {', $contents, 2)[1], 2)[0];
         $dynamic = explode('"states":', explode('"DynamicListing": {', $contents, 2)[1], 2)[0];
+        [$input, $output] = explode('"model":', $listing, 2);
         expect($contents)
             ->toContain('declare module "@sti3bas/rehearsal"', '"Listing":', '"price"?: number | null;', '"secret"?: string | null;')
             ->toContain('"model": { "id": number;', '"status"?: "active" | "sold";', '"states": { "sold": []; };', '"seller": "User";')
@@ -52,6 +54,10 @@ it('emits the public allowlists and best-effort model and operation types', func
         expect($listing)
             ->toContain('"published_at"?: string | null;', '"sku"?: string;', '"factoryRequired": "title";')
             ->not->toContain('"factoryRequired": "sku"', '"factoryRequired": "secret"');
+        expect($input)->toContain('"display_title"?: unknown;');
+        expect($output)
+            ->toContain('"modelColumns": "id" | "price" | "title" | "sku";')
+            ->not->toContain('"display_title"');
         expect($dynamic)->not->toContain('"factoryRequired"');
     } finally {
         if (is_file($path)) {
@@ -67,7 +73,14 @@ final class TypeTestListing extends Model
 
     protected $hidden = ['secret'];
 
+    protected $fillable = ['display_title'];
+
     protected $casts = ['secret' => 'string', 'published_at' => 'datetime'];
+
+    public function setDisplayTitleAttribute(string $value): void
+    {
+        $this->attributes['title'] = $value;
+    }
 }
 
 final class TypeTestListingFactory extends Factory
@@ -76,6 +89,7 @@ final class TypeTestListingFactory extends Factory
     {
         return [
             'title' => fake()->randomElement(['Chair', 'Table']),
+            'display_title' => 'Chair',
             'secret' => throw new LogicException('Type generation must not execute the factory'),
         ];
     }

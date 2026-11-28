@@ -56,9 +56,14 @@ export type FactoryCountBuilder<K extends FactoryName> = FactoryCountBuilderBase
   [S in FactoryState<K>]: (...args: FactoryStateMap<K>[S]) => FactoryCountBuilder<K>;
 };
 export type ModelWhereOperator = "=" | "!=" | "<" | "<=" | ">" | ">=" | "like";
-export type ModelColumn<K extends FactoryName> = keyof Factories[K]["model"] & string;
+type ModelColumnNames<K extends FactoryName> = Factories[K] extends { modelColumns: infer Columns } ? Columns & string : string;
+export type ModelColumn<K extends FactoryName> = keyof Factories[K]["model"] & ModelColumnNames<K>;
+type ModelFilterKeys<K extends FactoryName> = Extract<keyof FactoryAttributes<K>, ModelColumnNames<K>>;
+type ModelFilters<K extends FactoryName> = [ModelFilterKeys<K>] extends [never]
+  ? Record<string, never>
+  : Pick<FactoryAttributes<K>, ModelFilterKeys<K>>;
 export interface ModelQuery<K extends FactoryName> {
-  where(attrs: FactoryAttributes<K>): ModelQuery<K>;
+  where(attrs: ModelFilters<K>): ModelQuery<K>;
   where<C extends ModelColumn<K>>(column: C, value: Factories[K]["model"][C] | null): ModelQuery<K>;
   where<C extends ModelColumn<K>>(column: C, operator: ModelWhereOperator, value: unknown): ModelQuery<K>;
   whereIn<C extends ModelColumn<K>>(column: C, values: readonly Factories[K]["model"][C][]): ModelQuery<K>;

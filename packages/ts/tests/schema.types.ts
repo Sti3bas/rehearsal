@@ -5,8 +5,9 @@ declare module "@sti3bas/rehearsal" {
   interface RehearsalSchema {
     factories: {
       Listing: {
-        attributes: { title?: string; price?: number };
-        model: { id: number; title?: string; price?: number };
+        attributes: { title?: string; price?: number; display_title?: string };
+        model: { id: number; title?: string; price?: number; summary?: string };
+        modelColumns: "id" | "price" | "title";
         states: {
           sold: [];
           soldTo: [buyer: FactoryModelRef<"User">, soldAt?: string | Date | null];
@@ -73,7 +74,13 @@ test("generated types reach the Playwright fixture", async ({ laravel }) => {
   expectTypeOf(second.title).toEqualTypeOf<string | undefined>();
   const many = await laravel.factory("Listing").count(3).sold().create((_, i) => ({ title: `L${i}` }));
   expectTypeOf(many[0].id).toEqualTypeOf<number>();
+  await laravel.factory("Listing").create({ display_title: "Chair" });
+  await laravel.model("Listing").where({ title: "Chair" }).where("price", 10).get();
 
+  // @ts-expect-error factory-only setter is not a database column
+  laravel.model("Listing").where({ display_title: "Chair" });
+  // @ts-expect-error serialized accessor is not a database column
+  laravel.model("Listing").where("summary", "Chair");
   // @ts-expect-error wrong model passed to soldTo
   await laravel.factory("Listing").soldTo(fluentListing).create();
   // @ts-expect-error unknown state on fluent builder
