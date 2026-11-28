@@ -39,6 +39,17 @@ describe("Nuxt SSR readiness", () => {
     expect(fetcher).toHaveBeenCalledExactlyOnceWith(new URL("/store/_rehearsal/nuxt/ready", frontend), expect.anything());
   });
 
+  it("keeps probing when a candidate drops the connection", async () => {
+    const fetcher = vi.fn(async (url: URL) => {
+      if (url.pathname.startsWith("/store/en/")) throw new TypeError("fetch failed");
+      return Response.json({ rehearsalNuxt: "ready" });
+    });
+    await expect(checkNuxtRelay(new URL("/store/en", frontend), fetcher)).resolves.toBeUndefined();
+    expect(fetcher.mock.calls.map(([url]) => url.pathname)).toEqual([
+      "/store/en/_rehearsal/nuxt/ready", "/store/_rehearsal/nuxt/ready",
+    ]);
+  });
+
   it.each(["/store", "/store/", "/store/?ignored=1#fragment", "/store/en/home"])("finds a Nuxt mount under %s", async (base) => {
     const endpoint = new URL("/store/_rehearsal/nuxt/ready", frontend);
     const fetcher = vi.fn(async (url: URL) =>
