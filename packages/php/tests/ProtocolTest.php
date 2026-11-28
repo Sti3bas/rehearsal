@@ -145,11 +145,12 @@ it('protects control calls and fences markers when a test slot is reused', funct
     Route::get('/probe', fn (Attempt $attempt) => ['slot' => $attempt->slot]);
 
     try {
-        $this->getJson('/_rehearsal/ready')->assertOk()->assertJson(['protocol' => 1, 'run' => $run->id]);
+        $this->getJson('/_rehearsal/ready')->assertOk()->assertJson(['protocol' => 2, 'run' => $run->id]);
         $this->postJson('/_rehearsal/start', ['protocol' => 1, 'slot' => 2])->assertUnauthorized();
         $this->getJson('/probe')->assertForbidden();
         $headers = [Protocol::CAPABILITY => $capability];
-        $first = $this->postJson('/_rehearsal/start', ['protocol' => 1, 'slot' => 2], $headers)->assertOk()->json('marker');
+        $this->postJson('/_rehearsal/start', ['protocol' => 1, 'slot' => 2], $headers)->assertUnprocessable();
+        $first = $this->postJson('/_rehearsal/start', ['protocol' => 2, 'slot' => 2], $headers)->assertOk()->json('marker');
         $controlHeaders = $headers + [Protocol::MARKER => $first];
         $this->postJson('/_rehearsal/call', ['name' => 'probe.title', 'data' => ['title' => 'report']], $controlHeaders)
             ->assertOk()->assertJson(['data' => 'REPORT']);
@@ -160,7 +161,7 @@ it('protects control calls and fences markers when a test slot is reused', funct
         $this->getJson('/probe', [Protocol::MARKER => $first])->assertOk()->assertJson(['slot' => 2]);
         $this->getJson('/_rehearsal/typesense', [Protocol::MARKER => $first])->assertNotFound();
         $this->postJson('/_rehearsal/login', ['id' => 1], $headers + [Protocol::MARKER => $first])->assertNotFound();
-        $second = $this->postJson('/_rehearsal/start', ['protocol' => 1, 'slot' => 2], $headers)->assertOk()->json('marker');
+        $second = $this->postJson('/_rehearsal/start', ['protocol' => 2, 'slot' => 2], $headers)->assertOk()->json('marker');
         expect($second)->not->toBe($first);
         $this->getJson('/probe', [Protocol::MARKER => $first])->assertStatus(409);
         $this->getJson('/probe', [Protocol::MARKER => $second])->assertOk()->assertJson(['slot' => 2]);

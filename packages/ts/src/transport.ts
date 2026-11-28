@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-export const protocol = 1;
+export const protocol = 2;
 export const markerHeader = "X-Rehearsal-Attempt";
 export const markerCookie = "rehearsal_attempt";
 export const capabilityHeader = "X-Rehearsal-Capability";

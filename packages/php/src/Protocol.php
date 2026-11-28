@@ -9,7 +9,7 @@ use RuntimeException;
 
 final readonly class Protocol
 {
-    public const VERSION = 1;
+    public const VERSION = 2;
     public const MARKER = 'X-Rehearsal-Attempt';
     public const MARKER_COOKIE = 'rehearsal_attempt';
     public const CAPABILITY = 'X-Rehearsal-Capability';

@@ -53,7 +53,7 @@ describe("client", () => {
     const batch = [{ model: "User", attrs: { name: "Ada" } }, { model: "User", count: 1, states: ["staff"] }];
     expect(await client.factory(batch)).toEqual([{ name: "Ada" }, [{ name: "Grace" }]]);
     expect(post).toHaveBeenCalledTimes(2);
-    expect(post).toHaveBeenNthCalledWith(1, backend + "/_rehearsal/start", expect.objectContaining({ data: { protocol: 1, slot: 4 } }));
+    expect(post).toHaveBeenNthCalledWith(1, backend + "/_rehearsal/start", expect.objectContaining({ data: { protocol: 2, slot: 4 } }));
     expect(post).toHaveBeenNthCalledWith(2, backend + "/_rehearsal/call", expect.objectContaining({
       headers: expect.objectContaining({ "X-Rehearsal-Attempt": "attempt", "X-Rehearsal-Capability": "cap" }),
       data: { name: "factory", data: { items: batch } },
