@@ -77,10 +77,10 @@ for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
     })).toEqual({ status: 200, body: "" });
     await laravel.route("/probe/outside-db").respond({ networkError: true, once: true });
     await expect(page.evaluate(() => fetch("/probe/outside-db"))).rejects.toThrow();
-    await laravel.route("/probe/redirect").fault({ status: 503, json: { unavailable: {} }, once: true });
-    const fault = await page.request.get(baseURL + "/probe/redirect");
-    expect(fault.status()).toBe(503);
-    expect(await fault.json()).toEqual({ unavailable: {} });
+    await laravel.fake("GET /probe/redirect", { status: 503, json: { unavailable: {} }, once: true });
+    const fake = await page.request.get(baseURL + "/probe/redirect");
+    expect(fake.status()).toBe(503);
+    expect(await fake.json()).toEqual({ unavailable: {} });
     await laravel.route("/probe/outside-db").respond({ json: { empty: {}, numbers: [] } });
     expect(await page.evaluate(async () => (await fetch("/probe/outside-db")).json())).toEqual({ empty: {}, numbers: [] });
     expect((await page.request.get(baseURL + "/probe/redirect", { maxRedirects: 0 })).status()).toBe(302);
@@ -92,9 +92,9 @@ for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
   });
 }
 
-test("applies the app's CORS policy to a real-server fault", async ({ laravel, page, baseURL }) => {
+test("applies the app's CORS policy to a Laravel route fake", async ({ laravel, page, baseURL }) => {
   const origin = "http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT;
-  await laravel.route({ url: "/login", method: "POST" }).fault({
+  await laravel.fake({ url: "/login", method: "post" }, {
     status: 422,
     json: { message: "Injected validation error" },
   });
@@ -117,16 +117,16 @@ test("applies the app's CORS policy to a real-server fault", async ({ laravel, p
   expect(denied.headers()["access-control-allow-origin"]).not.toBe("http://127.0.0.1:1");
 });
 
-test("returns a headers-only fault once on the real server", async ({ laravel, page, baseURL }) => {
-  await laravel.route("/probe/redirect").fault({ headers: { "X-Probe-Fault": "once" }, once: true });
+test("returns a headers-only fake once on the real server", async ({ laravel, page, baseURL }) => {
+  await laravel.fake("GET /probe/redirect", { headers: { "X-Probe-Fake": "once" }, once: true });
   const first = await page.request.get(baseURL + "/probe/redirect", { maxRedirects: 0 });
-  expect(first.headers()["x-probe-fault"]).toBe("once");
+  expect(first.headers()["x-probe-fake"]).toBe("once");
   expect(first.status()).toBe(200);
   expect(await first.text()).toBe("");
 
   const second = await page.request.get(baseURL + "/probe/redirect", { maxRedirects: 0 });
   expect(second.status()).toBe(302);
-  expect(second.headers()["x-probe-fault"]).toBeUndefined();
+  expect(second.headers()["x-probe-fake"]).toBeUndefined();
 });
 
 test("shares finite mock claims and paused requests between browser and SSR", async ({ laravel, page }) => {
@@ -161,15 +161,46 @@ test("shares finite mock claims and paused requests between browser and SSR", as
   expect(await browser).toEqual(["Baseline"]);
 });
 
-test("clears finite real-server faults mid-attempt", async ({ laravel, page, baseURL }) => {
+test("clears finite Laravel route fakes mid-attempt", async ({ laravel, page, baseURL }) => {
   const redirect = () => page.request.get(baseURL + "/probe/redirect", { maxRedirects: 0 });
-  await laravel.route("/probe/redirect").fault({ status: 503, times: 2 });
+  await laravel.fake("GET /probe/redirect", { status: 503, times: 2 });
   expect((await redirect()).status()).toBe(503);
   expect((await redirect()).status()).toBe(503);
   expect((await redirect()).status()).toBe(302);
-  await laravel.route("/probe/redirect").fault({ status: 503 });
-  await laravel.clearRouteFaults();
+  await laravel.fake("GET /probe/redirect", { status: 503 });
+  await laravel.clearFakes();
   expect((await redirect()).status()).toBe(302);
+});
+
+test("shares a Laravel fake sequence across browser and SSR requests", async ({ laravel, page }) => {
+  const frontend = "http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT;
+  const browserUsers = () => page.evaluate(async () => (await (await fetch("/state")).json()).users);
+  await page.goto("/");
+  await expect(laravel.fake("POST /state", { status: 201 })).rejects.toThrow(/422/);
+  await laravel.fake({ method: "get", url: "/state" }, [
+    { json: { users: ["First"] }, times: 2 },
+    { json: { users: ["Last"] } },
+  ]);
+  expect(await browserUsers()).toEqual(["First"]);
+  expect(await (await page.request.get(frontend)).text()).toContain("<li>First</li>");
+  expect(await browserUsers()).toEqual(["Last"]);
+  expect(await (await page.request.get(frontend)).text()).toContain("<li>Last</li>");
+  await laravel.clearFakes();
+  expect(await browserUsers()).toEqual(["Baseline"]);
+});
+
+test("runs Laravel route fake callbacks in the Playwright test", async ({ laravel, page }) => {
+  const frontend = "http://127.0.0.1:" + process.env.REHEARSAL_E2E_NUXT_PORT;
+  const hits: string[] = [];
+  await page.goto("/");
+  await laravel.fake("GET /state", (request) => {
+    const name = new URL(request.url).searchParams.get("name") ?? "SSR";
+    hits.push(name);
+    return { json: { users: [name] } };
+  });
+  expect(await page.evaluate(async () => (await (await fetch("/state?name=Browser")).json()).users)).toEqual(["Browser"]);
+  expect(await (await page.request.get(frontend)).text()).toContain("<li>SSR</li>");
+  expect(hits).toEqual(["Browser", "SSR"]);
 });
 
 test.describe("route mocks on a reused slot", () => {

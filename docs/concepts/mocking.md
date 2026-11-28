@@ -1,6 +1,6 @@
-# Mocks, faults, and callbacks
+# Mocks, fakes, and callbacks
 
-Choose the layer that needs to change. A browser or SSR mock bypasses Laravel's route, a server fault acts on a request that reaches Laravel, and an HTTP fake intercepts a request Laravel sends out. Callback routing is for real, signature-verified inbound callbacks.
+Choose the layer that needs to change. A browser or SSR mock bypasses Laravel's route, a route fake acts on a request that reaches Laravel, and an HTTP fake intercepts a request Laravel sends out. Callback routing is for real, signature-verified inbound callbacks.
 
 ## Mock Laravel routes
 
@@ -21,9 +21,27 @@ Pass a URL at the Laravel origin, a path (with `*` for a segment or `**` across 
 
 `pause()` lets matched requests continue to Laravel after `release()`; with a response it returns that response instead. `waitForRequest({ timeout: 5000 })` waits until the first match (five seconds by default). Clearing a mock removes future matches, but does not release requests already waiting on its gate.
 
-For traffic that must actually reach Laravel, allowlist paths in `rehearsal.fault_paths`, then use `await laravel.route("/api/listings").fault({ status: 503, once: true })`. A delay without a response lets the real route run afterward. A headers-only fault returns an empty HTTP 200 with those headers instead of running the route. Faults support `once` and `times`; use `clearRouteFaults()` to remove them independently of mocks. Each attempt starts with no rules.
+Set `rehearsal.route_mocks` to `false` to disable browser and SSR response mocks and their resolution route. The browser login route is only installed when login is configured, and the Typesense credential route is only installed when the Scout integration is configured for Typesense.
 
-Set `rehearsal.route_mocks` to `false` to disable browser and SSR response mocks and their resolution route. Real-server faults have a separate allowlist. The browser login route is only installed when login is configured, and the Typesense credential route is only installed when the Scout integration is configured for Typesense.
+## Fake incoming Laravel routes
+
+```ts
+await laravel.fake("GET /api/listings", [
+  { status: 503, once: true },
+  { json: { data: [] } },
+]);
+await laravel.fake({ url: "/api/listings", method: "get" }, { delay: 100 });
+await laravel.fake("GET /api/listings", (request) => ({
+  json: { data: [{ id: Number(new URL(request.url).searchParams.get("id")) }] },
+}));
+await laravel.clearFakes();
+```
+
+Use this when browser and SSR requests should reach Laravel but receive a controlled response before the route handler runs. Routes are discovered by default; configure `rehearsal.fake_routes` to restrict them. Use an uppercase method and path, or pass a structural `{ url, method }` object such as the result of a Wayfinder route call. A generated route key uses `*` for path parameters; pass a concrete route object to target one URL.
+
+Generate declarations with [`rehearsal:types`](./factories#generate-types-from-your-laravel-app) to catch unknown route keys. For typed JSON, set the route's TypeScript response type in `rehearsal.fake_response_types` (for example, `'GET /api/listings' => '{ data: { id: number }[] }'`). The generated key and literal route objects select that response type. If a route helper returns only `url: string`, the compiler cannot identify the endpoint; the server still checks its method and URL. Use the generated key when you need JSON checking with such a helper.
+
+Callbacks receive a standard `Request` and run in the Playwright test process, so they can read and update test-local state. They may return a response or a promise. Use `once` or `times` to limit static responses; otherwise each sequence entry is used once except the final one, which repeats. A delay without a response lets the real route run afterward. A headers-only fake returns an empty HTTP 200 with those headers. `clearFakes()` clears incoming fake rules independently of browser mocks and outbound HTTP fakes. Each attempt starts with no rules.
 
 ## Route verified callbacks
 

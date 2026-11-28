@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sti3bas\Rehearsal;
 
+use GuzzleHttp\Client;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -12,73 +13,71 @@ use Symfony\Component\HttpFoundation\Response;
 
 final class RouteMocks
 {
-    public static function register(Attempt $attempt, array $input, bool $fault): void
+    public static function register(Attempt $attempt, array $input, bool $fake): void
     {
-        abort_if(! $fault && config('rehearsal.route_mocks') !== true, 404);
+        abort_if(! $fake && config('rehearsal.route_mocks') !== true, 404);
         abort_if(strlen(json_encode($input, JSON_THROW_ON_ERROR)) > 128_000, 422);
+        $key = $fake ? 'responses.*' : 'response';
+        $fields = 'status,jsonBody,body,headers,delay,once,times';
         $data = Validator::validate($input, [
             'path' => ['required', 'string', 'max:1024', 'starts_with:/', 'not_regex:/^\/\//'],
-            'method' => ['nullable', 'string', Rule::in(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])],
-            'response' => ($fault ? 'required' : 'present').'|array:status,jsonBody,body,headers,delay,abort,networkError,once,times,gate,passthrough',
-            'response.status' => 'sometimes|integer|min:200|max:599',
-            'response.jsonBody' => 'sometimes|string|json|max:100000',
-            'response.body' => 'sometimes|string|max:100000',
-            'response.headers' => 'sometimes|array|max:20',
-            'response.headers.*' => 'required|string|max:1024',
-            'response.delay' => 'sometimes|integer|min:0|max:10000',
-            'response.abort' => 'sometimes|boolean',
-            'response.networkError' => 'sometimes|boolean',
-            'response.once' => 'sometimes|boolean',
-            'response.times' => 'sometimes|integer|min:1',
-            'response.gate' => 'sometimes|string|regex:/\A[a-f0-9]{32}\z/',
-            'response.passthrough' => 'sometimes|boolean',
+            'method' => [$fake ? 'required' : 'nullable', 'string', Rule::in(FakeRoutes::METHODS)],
+            ...($fake ? [
+                'responses' => 'required_without:callback|prohibits:callback|array|list|min:1|max:20',
+                'callback' => 'required_without:responses|array:port,token,id',
+                'callback.port' => 'required_with:callback|integer|between:1,65535',
+                'callback.token' => 'required_with:callback|string|regex:/\A[a-f0-9]{64}\z/',
+                'callback.id' => 'required_with:callback|string|regex:/\A[a-f0-9]{32}\z/',
+            ] : []),
+            $key => 'present|array:'.$fields.($fake ? '' : ',abort,networkError,gate,passthrough'),
+            "$key.status" => 'sometimes|integer|min:200|max:599',
+            "$key.jsonBody" => 'sometimes|string|json|max:100000',
+            "$key.body" => 'sometimes|string|max:100000',
+            "$key.headers" => 'sometimes|array|max:20',
+            "$key.headers.*" => 'required|string|max:1024',
+            "$key.delay" => 'sometimes|integer|min:0|max:10000',
+            "$key.once" => 'sometimes|boolean',
+            "$key.times" => 'sometimes|integer|min:1',
+            ...($fake ? [] : [
+                'response.abort' => 'sometimes|boolean',
+                'response.networkError' => 'sometimes|boolean',
+                'response.gate' => 'sometimes|string|regex:/\A[a-f0-9]{32}\z/',
+                'response.passthrough' => 'sometimes|boolean',
+            ]),
         ]);
-        $response = $data['response'];
-        abort_if(isset($response['body'], $response['jsonBody'])
-            || (! empty($response['once']) && isset($response['times']))
-            || (! empty($response['passthrough']) && array_intersect_key($response, array_flip(['status', 'body', 'jsonBody', 'headers', 'abort', 'networkError']))), 422);
-        foreach ($response['headers'] ?? [] as $name => $value) {
-            abort_unless(preg_match('/\A[a-zA-Z0-9!#$%&\'*+.^_`|~-]+\z/', $name)
-                && ! preg_match('/[\r\n]/', $value), 422);
+        if ($fake) {
+            abort_unless(FakeRoutes::allows($data['method'], $data['path']), 422);
+        } else {
+            $data['responses'] = [$data['response']];
+            unset($data['response']);
         }
-        if ($fault) {
-            abort_unless(self::faultPathAllowed($data['path']), 422);
-            abort_if(! empty($response['abort']) || ! empty($response['networkError'])
-                || isset($response['gate']) || ! empty($response['passthrough']), 422);
+        foreach ($data['responses'] ?? [] as $response) {
+            abort_if(isset($response['body'], $response['jsonBody'])
+                || (! empty($response['once']) && isset($response['times']))
+                || (! empty($response['passthrough']) && array_intersect_key($response, array_flip(['status', 'body', 'jsonBody', 'headers', 'abort', 'networkError']))), 422);
+            foreach ($response['headers'] ?? [] as $name => $value) {
+                abort_unless(preg_match('/\A[a-zA-Z0-9!#$%&\'*+.^_`|~-]+\z/', $name)
+                    && ! preg_match('/[\r\n]/', $value), 422);
+            }
         }
 
-        AttemptData::update($attempt, $fault ? 'route-faults' : 'route-mocks', function (array &$rules) use ($attempt, $data, $response): void {
+        AttemptData::update($attempt, $fake ? 'route-fakes' : 'route-mocks', function (array &$rules) use ($attempt, $data): void {
             abort_if(count($rules) >= 64, 422);
-            if (isset($response['gate'])) {
-                AttemptData::update($attempt, 'route-gates', function (array &$gates) use ($response): void {
-                    abort_if(count($gates) >= 64 || isset($gates[$response['gate']]), 422);
-                    $gates[$response['gate']] = ['claimed' => false, 'released' => false];
+            if (isset($data['responses'][0]['gate'])) {
+                $gate = $data['responses'][0]['gate'];
+                AttemptData::update($attempt, 'route-gates', function (array &$gates) use ($gate): void {
+                    abort_if(count($gates) >= 64 || isset($gates[$gate]), 422);
+                    $gates[$gate] = ['claimed' => false, 'released' => false];
                 });
             }
             $rules[] = $data;
         });
     }
 
-    public static function faultPathAllowed(string $path): bool
+    public static function clear(Attempt $attempt, bool $fake): void
     {
-        if ($path === '/_rehearsal' || str_starts_with($path, '/_rehearsal/')) {
-            return false;
-        }
-        $configured = config('rehearsal.fault_paths', []);
-        if ($configured === false) {
-            return false;
-        }
-        if ($configured === true || (is_array($configured) && ($configured['discover'] ?? false) === true)) {
-            return true;
-        }
-
-        return is_array($configured) && in_array($path, $configured, true);
-    }
-
-    public static function clear(Attempt $attempt, bool $fault): void
-    {
-        abort_if(! $fault && config('rehearsal.route_mocks') !== true, 404);
-        AttemptData::update($attempt, $fault ? 'route-faults' : 'route-mocks', static function (array &$rules): void {
+        abort_if(! $fake && config('rehearsal.route_mocks') !== true, 404);
+        AttemptData::update($attempt, $fake ? 'route-fakes' : 'route-mocks', static function (array &$rules): void {
             $rules = [];
         });
     }
@@ -111,14 +110,17 @@ final class RouteMocks
             ->header('Cache-Control', 'no-store');
     }
 
-    public static function fault(Attempt $attempt, Request $request): ?Response
+    public static function fake(Attempt $attempt, Request $request): ?Response
     {
-        if (! is_file($attempt->path('route-faults.json'))) {
+        if (! is_file($attempt->path('route-fakes.json'))) {
             return null;
         }
         $rule = self::claim($attempt, $request->method(), $request->getRequestUri(), true);
         if ($rule === null) {
             return null;
+        }
+        if (isset($rule['callback'])) {
+            $rule = self::invokeCallback($rule['callback'], $request);
         }
         usleep(($rule['delay'] ?? 0) * 1000);
         $headers = $rule['headers'] ?? [];
@@ -132,25 +134,59 @@ final class RouteMocks
         return null;
     }
 
-    private static function claim(Attempt $attempt, string $method, string $target, bool $fault = false): ?array
+    private static function invokeCallback(array $callback, Request $request): array
+    {
+        $headers = [];
+        foreach ($request->headers->all() as $name => $values) {
+            if (in_array($name, [strtolower(Protocol::MARKER), strtolower(Protocol::CAPABILITY), 'x-rehearsal-fake'], true)) {
+                continue;
+            }
+            foreach ($values as $value) {
+                $headers[] = [$name, $value];
+            }
+        }
+        $body = $request->getContent();
+        $response = (new Client)->post('http://127.0.0.1:'.$callback['port'].'/_rehearsal/fake', [
+            'headers' => ['x-rehearsal-fake' => $callback['token']],
+            'json' => [
+                'id' => $callback['id'],
+                'url' => $request->fullUrl(),
+                'method' => $request->method(),
+                'headers' => $headers,
+                ...($body === '' || in_array($request->method(), ['GET', 'HEAD'], true) ? [] : ['body' => base64_encode($body)]),
+            ],
+            'allow_redirects' => false,
+            'proxy' => '',
+            'timeout' => 10,
+        ]);
+
+        return json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
+    }
+
+    private static function claim(Attempt $attempt, string $method, string $target, bool $fake = false): ?array
     {
         $path = explode('?', $target, 2)[0];
         if (! str_starts_with($path, '/') || $path === '/_rehearsal' || str_starts_with($path, '/_rehearsal/')) {
             return null;
         }
 
-        return AttemptData::update($attempt, $fault ? 'route-faults' : 'route-mocks', function (array &$rules) use ($attempt, $method, $path, $target) {
+        return AttemptData::update($attempt, $fake ? 'route-fakes' : 'route-mocks', function (array &$rules) use ($attempt, $method, $path, $target) {
             for ($i = count($rules) - 1; $i >= 0; $i--) {
                 $rule = $rules[$i];
-                $pattern = $rule['path'];
-                $candidate = str_contains($pattern, '?') ? $target : $path;
-                $regex = strtr(preg_quote($pattern, '~'), ['\*\*' => '.*', '\*' => '[^/]*']);
-                if (($rule['method'] ?? $method) === $method && preg_match('~\A'.$regex.'\z~D', $candidate)) {
-                    $response = $rule['response'];
-                    if (($response['once'] ?? false) || ($response['times'] ?? null) == 1) {
-                        array_splice($rules, $i, 1);
+                if (($rule['method'] ?? $method) === $method && FakeRoutes::matches($rule['path'], $path, $target)) {
+                    if (isset($rule['callback'])) {
+                        return ['callback' => $rule['callback']];
+                    }
+                    $response = $rule['responses'][0];
+                    $hasNext = count($rule['responses']) > 1;
+                    if (($response['once'] ?? false) || ($response['times'] ?? null) == 1 || ($hasNext && ! isset($response['times']))) {
+                        if ($hasNext) {
+                            array_shift($rules[$i]['responses']);
+                        } else {
+                            array_splice($rules, $i, 1);
+                        }
                     } elseif (isset($response['times'])) {
-                        $rules[$i]['response']['times']--;
+                        $rules[$i]['responses'][0]['times']--;
                     }
                     if (isset($response['gate'])) {
                         AttemptData::update($attempt, 'route-gates', static function (array &$gates) use ($response): void {

@@ -36,7 +36,10 @@ declare module "@sti3bas/rehearsal" {
     };
     artisan: { "listings:sync": { force: boolean } };
     schedules: "expire";
-    faultPaths: "/listings/**";
+    fakeRoutes: {
+      "GET /listings/**": { data: { id: number }[] };
+      "POST /listings": unknown;
+    };
   }
 }
 
@@ -47,8 +50,12 @@ test("generated types reach the Playwright fixture", async ({ laravel }) => {
   expectTypeOf(await laravel.call("stats.total")).toEqualTypeOf<number>();
   await laravel.artisan("listings:sync", { force: true });
   await laravel.schedule.run(["expire"]);
-  await laravel.route("/listings/**").fault({ status: 503 });
-  await laravel.route({ method: "GET", url: "/listings/**" }).fault({ status: 503 });
+  await laravel.fake("GET /listings/**", { status: 503 });
+  await laravel.fake("GET /listings/**", (request) => ({ json: { data: [{ id: Number(new URL(request.url).searchParams.get("id")) }] } }));
+  await laravel.fake({ method: "get", url: "/listings/42" }, [{ json: { data: [{ id: 42 }] } }]);
+  const wayfinderRoute = (): { method: "post"; url: string } => ({ method: "post", url: "/listings" });
+  await laravel.fake(wayfinderRoute(), { status: 201, json: { id: 42 } });
+  await laravel.clearFakes();
   await laravel.route("/anything").respond({ status: 204 });
   const [user, listings] = await laravel.factory([
     { model: "User", attrs: { name: "Ada" } },
@@ -119,6 +126,14 @@ test("generated types reach the Playwright fixture", async ({ laravel }) => {
   await laravel.schedule.run("publish");
   // @ts-expect-error invalid Artisan args
   await laravel.artisan("listings:sync", { force: "yes" });
-  // @ts-expect-error unregistered server fault path
-  await laravel.route("/anything").fault({ status: 503 });
+  // @ts-expect-error unregistered method and route pair
+  await laravel.fake("DELETE /listings", { status: 503 });
+  // @ts-expect-error unknown literal route object
+  await laravel.fake({ method: "get", url: "/anything" }, { status: 503 });
+  // @ts-expect-error fake JSON comes from the generated route response type
+  await laravel.fake("GET /listings/**", { json: { data: [{ id: "42" }] } });
+  // @ts-expect-error literal Wayfinder-style route objects also infer the fake JSON response
+  await laravel.fake({ method: "GET", url: "/listings/42" }, [{ json: { wrong: true } }]);
+  // @ts-expect-error callback responses use the endpoint's JSON type
+  await laravel.fake("GET /listings/**", () => ({ json: { id: "42" } }));
 });

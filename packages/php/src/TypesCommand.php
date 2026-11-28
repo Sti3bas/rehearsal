@@ -10,7 +10,6 @@ use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use ReflectionFunction;
 use ReflectionMethod;
@@ -62,7 +61,7 @@ final class TypesCommand extends Command
             'operations' => $this->shape($calls),
             'artisan' => $this->shape($artisan),
             'schedules' => $this->literals(array_keys($schedules->all())),
-            'faultPaths' => $this->literals($this->faultPaths()),
+            'fakeRoutes' => $this->shape($this->fakeRoutes()),
         ]);
         $helperImport = '';
         if ($usedHelpers !== []) {
@@ -411,39 +410,17 @@ final class TypesCommand extends Command
         return $artisan;
     }
 
-    /** @return list<string> */
-    private function faultPaths(): array
+    /** @return array<string, string> */
+    private function fakeRoutes(): array
     {
-        $configured = config('rehearsal.fault_paths', []);
-        if ($configured === false) {
-            return [];
+        $configured = config('rehearsal.fake_response_types', []);
+        $routes = [];
+        foreach (FakeRoutes::keys() as $route) {
+            $type = $configured[$route] ?? null;
+            $routes[$route] = is_string($type) ? $type : 'unknown';
         }
-        $discover = $configured === true || (is_array($configured) && ($configured['discover'] ?? false) === true);
-        $paths = [];
-        if ($discover) {
-            foreach (Route::getRoutes() as $route) {
-                $uri = '/'.ltrim($route->uri(), '/');
-                if ($uri === '/_rehearsal' || str_starts_with($uri, '/_rehearsal/')) {
-                    continue;
-                }
-                $pattern = (string) preg_replace('/\{[^}]+\}/', '*', $uri);
-                $paths[] = $pattern;
-            }
-        }
-        if (is_array($configured)) {
-            foreach ($configured as $key => $value) {
-                if ($key === 'discover' && is_bool($value)) {
-                    continue;
-                }
-                if (is_string($value)) {
-                    $paths[] = $value;
-                }
-            }
-        }
-        $paths = array_values(array_unique($paths));
-        sort($paths);
 
-        return $paths;
+        return $routes;
     }
 
     private function inMemorySchemaConnection(): ?string

@@ -76,8 +76,8 @@ Each call inherits Playwright's context options; `context` overrides them for th
 | `travel(date)` | Sets the attempt clock and fixed time in prepared pages; accepts a Date or date string. |
 | `bindContext(context)` / `preparePage(page)` | Attach attempt cookie and route behavior to an extra context; track an extra page for the fixture clock. The built-in fixtures do this automatically. |
 | `route(target).respond(response)` / `.pause(response?)` | Installs a mock or a gate. Pause returns `waitForRequest({ timeout }?)` and `release()`. |
-| `route(target).fault(response)` / `fault(target, response)` | Installs an allowed fault on real Laravel traffic. |
-| `clearRouteMocks()` / `clearRouteFaults()` | Clears future matches of the corresponding kind. |
+| `fake(target, responseOrSequenceOrCallback)` | Fakes incoming Laravel traffic by generated method/path key or a `{ url, method }` route object. Callbacks run in the test process. |
+| `clearRouteMocks()` / `clearFakes()` | Clears future matches of the corresponding kind. |
 | `http.fake(rules, options?)` | Replaces outgoing Laravel HTTP fake rules; blocks stray requests by default. |
 | `queue.drain({ queues?, maxJobs? }?)` | Returns `{ code, processed, removed, pending, failed, failures }`. |
 | `queue.failed({ queues? }?)` | Lists failed jobs with IDs, names, queues, exceptions, and failure times. |
