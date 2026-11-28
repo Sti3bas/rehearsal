@@ -57,9 +57,10 @@ it('emits the public allowlists and best-effort model and operation types', func
         expect($input)->toContain('"display_title"?: unknown;');
         expect($output)
             ->toContain('"modelColumns": "id" | "price" | "title" | "sku";')
+            ->toContain('"published_at"?: string | null;')
             ->toContain('"metadata"?: unknown[] | Record<string, unknown> | null;', '"settings"?: Record<string, unknown> | null;', '"tags"?: unknown[] | null;')
             ->not->toContain('"display_title"');
-        expect($input)->toContain('"metadata"?: unknown[] | Record<string, unknown> | null;');
+        expect($input)->toContain('"metadata"?: unknown[] | Record<string, unknown> | null;', '"published_at"?: number | null;');
         expect($dynamic)->not->toContain('"factoryRequired"');
     } finally {
         if (is_file($path)) {
@@ -70,6 +71,7 @@ it('emits the public allowlists and best-effort model and operation types', func
 
 /**
  * @property \Illuminate\Support\Carbon|null $published_at
+ * @property-write int|null $published_at
  * @property array|null $metadata
  */
 final class TypeTestListing extends Model

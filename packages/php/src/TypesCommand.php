@@ -140,13 +140,11 @@ final class TypesCommand extends Command
             }
         }
         foreach ($properties as [$annotation, $type, $attribute]) {
-            if (isset($knownCasts[$attribute])) {
-                continue;
-            }
-            if (! str_starts_with($annotation, '@property-read')) {
+            $writeOnly = str_starts_with($annotation, '@property-write');
+            if ($writeOnly || (! isset($knownCasts[$attribute]) && ! str_starts_with($annotation, '@property-read'))) {
                 $input[$attribute] = $this->phpType($type);
             }
-            if (! str_starts_with($annotation, '@property-write')) {
+            if (! $writeOnly && ! isset($knownCasts[$attribute])) {
                 $output[$attribute] = $this->phpType($type);
             }
         }
