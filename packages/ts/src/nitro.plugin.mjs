@@ -1,13 +1,17 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { defineNitroPlugin, getRequestHeaders, useRuntimeConfig } from "#imports";
+import { setNuxtRelayStatus } from "./nitro-ready.mjs";
 import { nuxtProxyContext, proxyNuxtFetch } from "./nuxt-proxy.js";
+import { nuxtRelayStatus } from "./nuxt-readiness.js";
 import { attemptMarker } from "./ssr.js";
 import { capabilityHeader, loopback, markerHeader } from "./transport.js";
 
 export default defineNitroPlugin(({ h3App }) => {
   const { enabled, laravelOrigin } = useRuntimeConfig().rehearsal;
-  if (enabled !== true && enabled !== "true") return;
-  if (typeof h3App?.handler !== "function") {
+  const status = nuxtRelayStatus(enabled, h3App?.handler);
+  setNuxtRelayStatus(status);
+  if (status === "disabled") return;
+  if (status === "unsupported") {
     console.warn("Rehearsal automatic Nitro forwarding requires Nitro 2; use useRehearsalFetch() for Nuxt app SSR.");
     return;
   }

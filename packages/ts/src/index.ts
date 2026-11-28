@@ -39,8 +39,11 @@ export const test = base.extend<{ laravel: Laravel; newBrowser: NewBrowser; rehe
       const ready = await request.get(url.origin + "/_rehearsal/ready", { maxRedirects: 0 });
       if (!ready.ok()) throw new Error("Rehearsal server not ready (HTTP " + ready.status() + ").");
       const info = await ready.json();
-      if (info.protocol !== protocol || (launch && info.run !== launch.run)) {
-        throw new Error("Rehearsal run/protocol mismatch.");
+      if (info.protocol !== protocol) {
+        throw new Error(`Rehearsal protocol mismatch: expected ${protocol} from @sti3bas/rehearsal, received ${info.protocol ?? "no protocol"} from Laravel. Install compatible versions of @sti3bas/rehearsal (npm) and sti3bas/rehearsal (Composer), then restart the Laravel server.`);
+      }
+      if (launch && info.run !== launch.run) {
+        throw new Error("Rehearsal run mismatch: the Laravel server does not belong to this Playwright run. Check laravelURL and restart the managed server.");
       }
       await use({
         origin: url.origin,
@@ -105,7 +108,7 @@ export const nuxtTest = base.extend<{ nuxt: NuxtFakes; nuxtURL?: string }>({
   },
 });
 
-export { passthrough, type NuxtFakeHandler, type NuxtFakePattern, type NuxtFakeResponse, type NuxtFakeRule, type NuxtFakeRules, type NuxtHold, type NuxtNavigationOptions } from "./nuxt-fakes.js";
+export { passthrough, type NuxtFakeHandler, type NuxtFakeOptions, type NuxtFakePattern, type NuxtFakeResponse, type NuxtFakeRule, type NuxtFakeRules, type NuxtHold, type NuxtNavigationOptions } from "./nuxt-fakes.js";
 export { expect } from "@playwright/test";
 export type { NewBrowser, NewBrowserOptions, NewBrowserSession } from "./browser.js";
 export { Laravel, type FactoryCall, type FactoryDefinition, type TypesenseClientConfig } from "./client.js";

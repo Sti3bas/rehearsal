@@ -1,10 +1,11 @@
 import { expect, type Page, type Request as BrowserRequest, type Route } from "@playwright/test";
 import { FakeBridge, fakeBridgeHeader } from "./fake-bridge.js";
+import { checkNuxtRelay } from "./nuxt-readiness.js";
 import { encodeRouteResponse, mockResponse, wait, type FakeMethod, type FakeResponse } from "./routes.js";
 import { capabilityHeader, loopback, markerHeader } from "./transport.js";
 
 export const passthrough = Symbol("rehearsal.nuxt.passthrough");
-export type NuxtFakePattern = `${FakeMethod} ${"http" | "https"}://${string}`;
+export type NuxtFakePattern = `${FakeMethod | "*"} ${"http" | "https"}://${string}`;
 export type NuxtFakeResponse<Json = unknown> =
   | (FakeResponse<Json> & { once?: never; times?: never; networkError?: false })
   | { networkError: true; delay?: number; status?: never; headers?: never; body?: never; json?: never; once?: never; times?: never }
@@ -12,6 +13,9 @@ export type NuxtFakeResponse<Json = unknown> =
 export type NuxtFakeHandler<Json = unknown> = (request: Request) => NuxtFakeResponse<Json> | Promise<NuxtFakeResponse<Json>>;
 export type NuxtFakeRule<Json = unknown> = NuxtFakeResponse<Json> | readonly NuxtFakeResponse<Json>[] | NuxtFakeHandler<Json>;
 export type NuxtFakeRules = Partial<Record<NuxtFakePattern, NuxtFakeRule>>;
+export interface NuxtFakeOptions {
+  scope?: "both" | "browser";
+}
 export type NuxtHold = NuxtFakeHandler & { release(): void; count(): number };
 export interface NuxtNavigationOptions {
   state?: Record<string, string | number | boolean | null>;
@@ -19,6 +23,7 @@ export interface NuxtNavigationOptions {
 }
 
 interface Rule {
+  scope: "both" | "browser";
   method: string;
   url: RegExp;
   includesQuery: boolean;
@@ -30,6 +35,7 @@ export class NuxtFakes {
   private rules: Rule[] = [];
   private holds = new Set<NuxtHold>();
   private bridge = new FakeBridge();
+  private routing?: ReturnType<Page["route"]>;
   private connection?: Promise<{ port: number; token: string; id: string }>;
   private routePattern = /^https?:\/\//;
   private frontend: URL;
@@ -39,9 +45,17 @@ export class NuxtFakes {
     if (!loopback(this.frontend)) throw new Error("Rehearsal Nuxt fakes require a loopback frontend URL.");
   }
 
-  async fake(rules: NuxtFakeRules) {
-    this.rules.unshift(...Object.entries(rules).flatMap(([key, response]) => response === undefined ? [] : [this.rule(key, response)]).reverse());
-    await (this.connection ??= this.start());
+  async fake(rules: NuxtFakeRules, { scope = "both" }: NuxtFakeOptions = {}) {
+    const registered = Object.entries(rules).flatMap(([key, response]) => response === undefined ? [] : [this.rule(key, response, scope)]);
+    if (!registered.length) return;
+    if (scope === "both") {
+      await (this.connection ??= this.startSSR().catch((error) => {
+        this.connection = undefined;
+        throw error;
+      }));
+    }
+    await (this.routing ??= this.page.route(this.routePattern, this.intercept));
+    this.rules.unshift(...registered.reverse());
   }
 
   clearFakes() {
@@ -98,14 +112,14 @@ export class NuxtFakes {
   async close() {
     this.clearFakes();
     try {
-      if (this.connection) await this.page.unroute(this.routePattern, this.intercept);
+      if (this.routing) await this.page.unroute(this.routePattern, this.intercept);
     } finally {
       await this.bridge.close();
     }
   }
 
-  private rule(key: string, response: NuxtFakeRule): Rule {
-    const match = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) (https?:\/\/[^\s]+)$/.exec(key);
+  private rule(key: string, response: NuxtFakeRule, scope: Rule["scope"]): Rule {
+    const match = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|\*) (https?:\/\/[^\s]+)$/.exec(key);
     if (!match) throw new Error('Rehearsal Nuxt fakes require a method and absolute URL, such as "GET https://example.test/feed".');
     const [, method, url] = match;
     const escapePattern = (part: string) => part.split(/(\*)/).map((chunk) => chunk === "*" ? ".*" : chunk.replace(/[|\\{}()[\]^$+?.]/g, "\\$&")).join("");
@@ -118,14 +132,15 @@ export class NuxtFakes {
       typeof response !== "symbol" && "length" in response ? response : [response];
     if (!sequence.length && typeof response !== "function") throw new Error("Rehearsal Nuxt fake sequences cannot be empty.");
     return {
-      method, url: new RegExp("^" + pattern + "$"), includesQuery: url.includes("?"), needsBody: typeof response === "function",
+      scope, method, url: new RegExp("^" + pattern + "$"), includesQuery: url.includes("?"), needsBody: typeof response === "function",
       handler: typeof response === "function" ? response : () => sequence[Math.min(calls++, sequence.length - 1)]!,
     };
   }
 
-  private match(method: string, url: URL) {
+  private match(method: string, url: URL, ssr = false) {
     return this.rules.find((rule) =>
-      rule.method === method && rule.url.test(url.origin + url.pathname + (rule.includesQuery ? url.search : "")),
+      (!ssr || rule.scope === "both") && (rule.method === "*" || rule.method === method) &&
+      rule.url.test(url.origin + url.pathname + (rule.includesQuery ? url.search : "")),
     );
   }
 
@@ -135,13 +150,12 @@ export class NuxtFakes {
     return encodeRouteResponse(reply);
   }
 
-  private async start() {
-    const connection = await this.bridge.register(async (request) => {
-      const rule = this.match(request.method, new URL(request.url));
+  private async startSSR() {
+    await checkNuxtRelay(this.frontend);
+    return this.bridge.register(async (request) => {
+      const rule = this.match(request.method, new URL(request.url), true);
       return rule ? this.resolve(rule, request) : null;
-    }, ({ method, url }) => this.match(method, new URL(url))?.needsBody === true);
-    await this.page.route(this.routePattern, this.intercept);
-    return connection;
+    }, ({ method, url }) => this.match(method, new URL(url), true)?.needsBody === true);
   }
 
   private intercept = async (route: Route, request: BrowserRequest) => {
@@ -164,7 +178,7 @@ export class NuxtFakes {
         return route.fulfill({ status, headers: Object.fromEntries(responseHeaders), body });
       }
     }
-    if (url.origin !== this.frontend.origin || !this.rules.length ||
+    if (url.origin !== this.frontend.origin || !this.rules.some(({ scope }) => scope === "both") ||
       ["script", "stylesheet", "font", "eventsource"].includes(request.resourceType())) return route.fallback();
     const { port, token, id } = await this.connection!;
     headers.set(fakeBridgeHeader, [port, token, id].join("."));

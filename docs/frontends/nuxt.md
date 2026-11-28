@@ -1,33 +1,99 @@
 # Nuxt <Badge type="tip" text="Nuxt 4 module" />
 
-For Nuxt 4, Rehearsal provides a dedicated module for marked SSR requests and optional direct Typesense search. Configure [both Playwright origins](./#use-two-origins-for-a-split-frontend) first.
+## Quickstart: Nuxt and Laravel
 
-## Install the module
+This example assumes siblings named `backend/` (Laravel 13) and `frontend/` (Nuxt 4 with Node and Nitro 2). Put Playwright in `frontend/`.
 
-Add the module to `nuxt.config.ts`; no plugin files to copy. If your package manager doesn't expose Nuxt's `@nuxt/kit` to peer dependencies, install `@nuxt/kit@^4` alongside the npm package.
+```sh
+# backend/
+composer require --dev sti3bas/rehearsal
+php artisan rehearsal:install
 
-```ts
+# frontend/
+npm install -D @sti3bas/rehearsal @playwright/test
+npx playwright install chromium
+```
+
+Add the module to your existing Nuxt config. If your package manager doesn't expose Nuxt's `@nuxt/kit` to peer dependencies, install `@nuxt/kit@^4` alongside the npm package.
+
+```ts [frontend/nuxt.config.ts]
 export default defineNuxtConfig({
   modules: ["@sti3bas/rehearsal/nuxt"],
 });
 ```
 
-## Enable the relay in Playwright
+Enable the relay **only** in the dedicated loopback Nuxt process started by Playwright. Use the same hostname on both ports.
 
-Set `NUXT_REHEARSAL_ENABLED=true` **only** in the Nuxt process launched by Playwright. The test relay defaults to `http://127.0.0.1:8100`; set `NUXT_REHEARSAL_LARAVEL_ORIGIN` if you use another Laravel origin.
+```ts [frontend/playwright.config.ts]
+import { defineConfig } from "@playwright/test";
+import { laravelServer } from "@sti3bas/rehearsal";
 
-```ts [Nuxt webServer entry]
-{
-  command: "npm run dev -- --host 127.0.0.1 --port 3000",
-  url: "http://127.0.0.1:3000/api/ready",
-  env: {
-    NUXT_REHEARSAL_ENABLED: "true",
-    NUXT_REHEARSAL_LARAVEL_ORIGIN: "http://127.0.0.1:8100",
-  },
-}
+const frontend = "http://127.0.0.1:3000";
+const backend = "http://127.0.0.1:8100";
+
+export default defineConfig({
+  testDir: "./tests",
+  use: { browserName: "chromium", baseURL: frontend, laravelURL: backend, rehearsalRoot: "../backend" },
+  webServer: [
+    laravelServer({ cwd: "../backend", port: 8100 }),
+    {
+      command: "npm run dev -- --host 127.0.0.1 --port 3000",
+      url: frontend + "/api/ready",
+      timeout: 120_000,
+      env: {
+        NUXT_REHEARSAL_ENABLED: "true",
+        NUXT_REHEARSAL_LARAVEL_ORIGIN: backend,
+      },
+    },
+  ],
+});
 ```
 
-Use an unmarked readiness route that does not call Laravel, such as the [example `/api/ready` handler](https://github.com/Sti3bas/rehearsal/blob/main/examples/nuxt/server/api/ready.get.ts). Keep this entry alongside `laravelServer()`.
+Use a readiness route that doesn't need a Laravel request, so that Playwright can start even if the SSR relay isn't configured yet:
+
+```ts [frontend/server/api/ready.get.ts]
+export default defineEventHandler(() => ({ ready: true }));
+```
+
+Add a smoke page that fetches once on the server and fetches again on a click. The example URL stands in for an API dependency; the test supplies both responses.
+
+```vue [frontend/app/pages/rehearsal-smoke.vue]
+<script setup lang="ts">
+const { data, refresh } = await useAsyncData("rehearsal-smoke", () =>
+  $fetch<{ message: string }>("https://example.test/message"),
+);
+const mounted = ref(false);
+onMounted(() => { mounted.value = true; });
+</script>
+
+<template>
+  <p>{{ data?.message }}</p>
+  <button :disabled="!mounted" @click="refresh()">Refresh</button>
+</template>
+```
+
+```ts [frontend/tests/rehearsal.spec.ts]
+import { mergeTests } from "@playwright/test";
+import { expect, nuxtTest, test } from "@sti3bas/rehearsal";
+
+const browserTest = mergeTests(test, nuxtTest);
+
+browserTest("fakes the server render and a browser refresh", async ({ nuxt, page }) => {
+  const headers = { "access-control-allow-origin": "http://127.0.0.1:3000" };
+  await nuxt.fake({
+    "GET https://example.test/message": [
+      { json: { message: "From SSR" } },
+      { json: { message: "From the browser" }, headers },
+    ],
+  });
+  const response = await page.goto("/rehearsal-smoke");
+  expect(await response!.text()).toContain("<p>From SSR</p>");
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.getByText("From the browser")).toBeVisible();
+});
+```
+
+Run `npx playwright test` from `frontend/`. The first browser-and-SSR registration checks that the module is loaded, the relay is enabled, and Nitro supports interception. If you use a different server URL for the Nuxt fixture, set its `nuxtURL` option.
 
 ## Relay Laravel requests
 
@@ -73,6 +139,13 @@ browserTest("renders search results", async ({ nuxt, page }) => {
 Prefer `nuxt.fake` for Nuxt browser and SSR fetches. It shares handlers defined in the test without putting rules in cookies. `laravel.route(...).respond(...)` is still available for Laravel-only browser interception and SSR calls through `useRehearsalFetch()`. Use `laravel.fake` instead when the request should reach Laravel before it is replaced.
 
 Use `nuxt.hold()` as a fake handler to pause matching requests in the browser or SSR. Wait for its `count()` to increase, then call `release()` to let those requests continue. Release SSR requests before the proxy's 10-second timeout. `nuxt.navigate(page, path, { state?, expect? })` uses the client router without reloading the document and waits for the destination URL. Vue Router apps can pass `state` to attach history state. See [the mocking guide](../concepts/mocking#nuxt-browser-and-ssr-fakes) for sequences, live callbacks, and passthrough.
+
+To hold client requests without blocking SSR, use `{ scope: "browser" }`. This scope works without the Nuxt module and leaves server requests alone. Use `*` in place of the method to match any HTTP method:
+
+```ts
+const pending = nuxt.hold();
+await nuxt.fake({ "* https://search.example.test/collections/*": pending }, { scope: "browser" });
+```
 
 ## Typesense InstantSearch
 
