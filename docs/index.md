@@ -29,4 +29,7 @@ features:
   - title: Test with real services
     details: Add Mailpit, Laravel Scout, or Reverb when you need to verify email, search, or broadcast behavior.
     link: /integrations/
+  - title: Fake the right request
+    details: Use laravel.fake for incoming Laravel routes, laravel.http.fake for outbound Laravel HTTP, and nuxt.fake for browser and SSR fetches.
+    link: /concepts/mocking
 ---

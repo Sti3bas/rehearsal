@@ -29,12 +29,15 @@ Rehearsal imports those models from the restored slot database on every attempt.
 Use ordinary Scout-backed application search for backend behavior. For a browser that queries Typesense directly, pass `laravel.typesense()` to your frontend test setup:
 
 ```ts
-const { origin, collectionPrefix, searchKey } = laravel.typesense();
-const collection = `${collectionPrefix}listings`;
-// Configure your search client with origin, collection, and X-TYPESENSE-API-KEY: searchKey.
+const typesense = laravel.typesense();
+const listings = typesense.collection("listings");
+await listings.waitForIndexed(3);
+
+// Use listings.name as the search index and typesense.searchKey as the search key.
+const searchURL = new URL(listings.searchPath, typesense.origin);
 ```
 
-Use the collection suffix for your model rather than assuming `listings`. The key permits document searches in that slot's collections only and is revoked at the next reset or teardown. Do not send the admin or backend write key to the browser.
+Pass your model's unprefixed collection name. `name` and `searchPath` include the current slot's prefix, and `waitForIndexed` waits for at least the requested number of searchable documents. The key permits document searches in that slot's collections only and is revoked at the next reset or teardown. Do not send the admin or backend write key to the browser.
 
 ::: warning Allow only the frontend origin
 Configure CORS on the disposable Typesense server for your loopback frontend origin. If using Nuxt and InstantSearch, see [the Nuxt adapter helper](../../frontends/nuxt#typesense-instantsearch) for test-time configuration.

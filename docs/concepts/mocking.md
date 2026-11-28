@@ -1,6 +1,15 @@
 # Mocks, fakes, and callbacks
 
-Choose the layer that needs to change. A browser or SSR mock bypasses Laravel's route, a route fake acts on a request that reaches Laravel, and an HTTP fake intercepts a request Laravel sends out. Callback routing is for real, signature-verified inbound callbacks.
+## Which fake should I use?
+
+| Request you want to replace | API |
+| --- | --- |
+| An incoming request that should reach Laravel, but not its real route handler | `laravel.fake` |
+| An outbound request made through Laravel's HTTP client | `laravel.http.fake` |
+| A Nuxt browser or SSR fetch that should use a live test handler | `nuxt.fake` |
+| A Laravel-bound browser request or a Nuxt SSR call using `useRehearsalFetch()` | `laravel.route(...).respond(...)` |
+
+Callback routing is for real, signature-verified inbound callbacks, not for faking responses.
 
 ## Mock Laravel routes
 

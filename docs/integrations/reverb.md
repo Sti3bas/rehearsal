@@ -26,15 +26,15 @@ Import `reverbTest as test` from `@sti3bas/rehearsal`. Before Echo connects, hav
 ```ts
 import { expect, reverbTest as test } from "@sti3bas/rehearsal";
 
-test("renders a listing update", async ({ page, reverb }) => {
+test("renders a listing update", async ({ page, laravel }) => {
   await page.goto("/listings/3");
-  await reverb.waitForSubscriber("private-listings.3");
-  await reverb.broadcast("private-listings.3", "ListingUpdated", { id: 3 });
+  await laravel.reverb.waitForChannel("private-listings.3");
+  await laravel.reverb.broadcast("private-listings.3", "ListingUpdated", { id: 3 });
   await expect(page.getByText("Listing updated")).toBeVisible();
 });
 ```
 
-This assumes your app subscribes to that channel and renders the event. Pass the exact wire channel and event names. Use `reverb.subscribed(channel)` for a non-polling occupancy check; `waitForSubscriber` defaults to 10 seconds.
+This assumes your app subscribes to that channel and renders the event. Pass the exact wire channel and event names. Use `laravel.reverb.subscribed(channel)` for a non-polling occupancy check or `laravel.reverb.host` for the host and port. `waitForChannel` defaults to 10 seconds; it is an alias of `waitForSubscriber`. The `reverb` fixture exposes the same instance as `laravel.reverb`.
 
 ::: tip Assert the UI, not just the publish call
 The broadcaster can report that Reverb accepted the event, not that the browser handled it. Check a visible effect in the test.

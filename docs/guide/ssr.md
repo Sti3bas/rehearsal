@@ -4,4 +4,4 @@ This guide has moved to [Frontends](../frontends/). Start with [two-origin setup
 
 ## Nuxt 4
 
-See the [Nuxt guide](../frontends/nuxt) for SSR, Nitro, cookie forwarding, and Typesense InstantSearch.
+See the [Nuxt guide](../frontends/nuxt) for SSR, Nitro, cookie forwarding, and Typesense InstantSearch. Use `nuxt.fake` for browser and SSR fetches, `laravel.fake` for requests that reach your Laravel routes, and `laravel.http.fake` for requests Laravel sends through its HTTP client. See [which fake to use](../concepts/mocking).

@@ -12,6 +12,8 @@
 
 Rehearsal connects a real Laravel application to Playwright Test. Run browser tests in parallel against one Laravel server while Rehearsal resets the database, files, sessions, cache, and queues for each attempt. Use Laravel factories and named operations from TypeScript while keeping Playwright's browser APIs, traces, and retries.
 
+Use `laravel.fake` for requests to your Laravel routes, `laravel.http.fake` for outbound requests from Laravel's HTTP client, or `nuxt.fake` for Nuxt browser and SSR fetches. See the [mocking guide](https://sti3bas.github.io/rehearsal/concepts/mocking.html).
+
 **[Read the documentation](https://sti3bas.github.io/rehearsal/)**
 
 [Introduction](https://sti3bas.github.io/rehearsal/guide/getting-started.html) · [Installation](https://sti3bas.github.io/rehearsal/guide/installation.html) · [Configuration](https://sti3bas.github.io/rehearsal/guide/configuration.html) · [Concepts](https://sti3bas.github.io/rehearsal/concepts/isolation.html) · [Extending](https://sti3bas.github.io/rehearsal/guide/extending.html) · [API reference](https://sti3bas.github.io/rehearsal/reference/typescript.html)
