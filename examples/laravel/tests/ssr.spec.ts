@@ -219,6 +219,17 @@ test("reads multipart fields and files in Laravel fake callbacks", async ({ lara
   })).json()).toEqual({ value: "sample", tags: ["oak", "pine"], file: "file text" });
 });
 
+test("reads multipart uploads larger than the original callback bridge limit", async ({ laravel, page }) => {
+  await laravel.fake("POST /login", async (request) => {
+    const file = (await request.formData()).get("file") as File;
+    return { json: { size: file.size } };
+  });
+  const size = 1_700_000;
+  expect(await (await page.request.post("/login", {
+    multipart: { file: { name: "large.txt", mimeType: "text/plain", buffer: Buffer.alloc(size, 97) } },
+  })).json()).toEqual({ size });
+});
+
 test.describe("route mocks on a reused slot", () => {
   test.describe.configure({ mode: "serial" });
   test("stubs a Laravel route", async ({ laravel, page }) => {

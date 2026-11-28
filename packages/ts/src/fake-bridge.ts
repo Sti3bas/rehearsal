@@ -54,7 +54,7 @@ export class FakeBridge {
           let size = 0;
           for await (const chunk of incoming) {
             size += chunk.length;
-            if (size > 2_000_000) {
+            if (size > 32_000_000) {
               outgoing.writeHead(413).end();
               return;
             }
