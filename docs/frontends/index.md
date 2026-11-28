@@ -33,6 +33,26 @@ export default defineConfig({
 
 This example assumes a frontend `dev` script and a lightweight `/api/ready` endpoint that returns success without querying Laravel. Adapt both to your app. Both services must be loopback HTTP. Use the same hostname on both ports when your browser must share cookies.
 
+### Send credentials from the browser
+
+::: warning Different ports are different origins
+Playwright sets an HTTP-only attempt cookie, but the browser's default fetch settings don't send it on cross-origin requests, even when both ports use the same hostname. Set `credentials: "include"` with Fetch or `withCredentials: true` with Axios. Without the cookie, Rehearsal rejects ordinary browser requests to Laravel with HTTP 403. You don't need to read the cookie or add a marker header yourself.
+:::
+
+```ts
+await fetch("http://127.0.0.1:8100/api/users", { credentials: "include" });
+```
+
+In Laravel's `config/cors.php`, enable `supports_credentials` and list the exact frontend origin (including its port) in `allowed_origins`, not a wildcard:
+
+```php [config/cors.php]
+'paths' => ['api/*'],
+'allowed_origins' => ['http://127.0.0.1:3000'],
+'supports_credentials' => true,
+```
+
+Include every route called across origins in `paths`, and allow the methods and request headers your app uses. Rehearsal lets Laravel handle CORS preflights on configured routes without the attempt cookie; credentialed requests themselves still need it.
+
 ::: tip Browser requests and SSR are different
 If a frontend server makes its own Laravel request, it does not automatically inherit the browser's attempt marker. Use the [Nuxt module](./nuxt) or a trusted loopback relay with [`rehearsalSsrFetch`](../reference/typescript#package-subpaths) for custom SSR. Do not cache, prerender, or serialize attempt markers into page data.
 :::

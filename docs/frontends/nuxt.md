@@ -36,11 +36,16 @@ Opt your Laravel requests into the relay with the auto-imported `useRehearsalFet
 ```ts
 const { data } = await useFetch("/api/users", {
   baseURL: apiBase, // your existing Laravel API URL
+  credentials: "include",
   $fetch: useRehearsalFetch(),
 });
 ```
 
 For direct calls, use `const fetchLaravel = useRehearsalFetch()` in setup and call it like `$fetch`. In the browser or while disabled, the composable returns Nuxt’s ordinary `$fetch`, so keep your app’s usual URL or `baseURL`.
+
+::: warning Browser calls still need credentials
+For direct calls from the Nuxt browser app to Laravel on another port, set `credentials: "include"` (or `withCredentials: true` if you use Axios) and [allow the Nuxt origin in Laravel CORS](./#send-credentials-from-the-browser). This is required for the attempt cookie even on unauthenticated routes. It does not enable SSR cookie forwarding.
+:::
 
 ## Nitro routes
 
@@ -62,7 +67,7 @@ Use `listingsIndex` for the InstantSearch index; pass collection names without t
 
 ## Sanctum and authenticated SSR
 
-For Sanctum SPA auth, use the same loopback hostname on different ports. Add the frontend host and port to Sanctum’s stateful domains, enable stateful API middleware and configure Laravel CORS for the frontend origin with credentials enabled. In the browser, request `/sanctum/csrf-cookie` with credentials and send the decoded XSRF cookie in `X-XSRF-TOKEN` on writes. Rehearsal lets Laravel handle cookie-less CORS preflights on configured paths without binding an attempt. Actual requests still require the attempt marker; Laravel stores sessions in the isolated slot database.
+For Sanctum SPA auth, use the same loopback hostname on different ports. Add the frontend host and port to Sanctum’s stateful domains, enable stateful API middleware, and include `sanctum/csrf-cookie` and any cross-origin login routes in Laravel's CORS paths. In the browser, request `/sanctum/csrf-cookie` with credentials and send the decoded XSRF cookie in `X-XSRF-TOKEN` on writes. Laravel stores sessions in the isolated slot database.
 
 For authenticated SSR, opt in to forwarding just the browser cookies your app needs:
 
