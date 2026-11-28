@@ -14,6 +14,7 @@ uses(TestCase::class);
 it('emits the public allowlists and best-effort model and operation types', function () {
     config([
         'database.connections.rehearsal_types' => ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => ''],
+        'database.connections.rehearsal_types_empty' => ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => ''],
         'rehearsal.factories' => ['Listing' => [
             'model' => TypeTestListing::class,
             'factory' => TypeTestListingFactory::class,
@@ -91,6 +92,10 @@ it('emits the public allowlists and best-effort model and operation types', func
         expect($appendedModel)->toContain('"display_title"?: unknown;')->not->toContain('"private_label"');
         expect($appendedFilters)->not->toContain('"display_title"', '"private_label"');
         expect($appended)->not->toContain('"factoryRequired"');
+
+        $this->artisan('rehearsal:types', ['path' => $path, '--database' => 'rehearsal_types_empty'])->assertSuccessful();
+        $withoutColumns = explode('"states":', explode('"LongArrayListing": {', file_get_contents($path), 2)[1], 2)[0];
+        expect($withoutColumns)->toContain('"sku"?: unknown;')->not->toContain('"factoryRequired"');
     } finally {
         if (is_file($path)) {
             unlink($path);
