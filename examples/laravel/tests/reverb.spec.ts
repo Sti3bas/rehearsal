@@ -13,10 +13,14 @@ test("injects the attempt's Reverb settings into a managed secondary browser", a
   const config = laravel.integrationMetadata("reverb");
   expect(config).toBeDefined();
   expect(await page.evaluate(() => globalThis.__REHEARSAL_REVERB__)).toEqual(config);
+  expect(laravel.reverb.host).toBe(await page.evaluate(() => {
+    const { host, port } = globalThis.__REHEARSAL_REVERB__;
+    return host + ":" + port;
+  }));
 });
 
 for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
-  test("isolates identical Reverb channels for " + name, async ({ reverb, page }, info) => {
+  test("isolates identical Reverb channels for " + name, async ({ laravel, reverb, page }, info) => {
     expect(await reverb.subscribed("probe")).toBe(false);
     await page.goto("/");
     await page.evaluate(() => new Promise<void>((ready, fail) => {
@@ -42,6 +46,7 @@ for (const name of ["Ada", "Grace", "Linus", "Margaret"]) {
     await writeFile(resolve(barrier, "open-" + info.parallelIndex), name);
     await expect.poll(async () => (await readdir(barrier)).filter((file) => file.startsWith("open-")).length).toBe(4);
     await reverb.waitForSubscriber("probe");
+    await laravel.reverb.waitForChannel("probe");
     const payload = { value: name, empty: {}, numeric: { 0: name }, list: [name] };
     await reverb.broadcast("probe", "ping", payload);
     await writeFile(resolve(barrier, "sent-" + info.parallelIndex), name);

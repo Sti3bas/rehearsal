@@ -49,7 +49,30 @@ For direct calls from the Nuxt browser app to Laravel on another port, set `cred
 
 ## Nitro routes
 
-With the module enabled on a Node Nitro 2 server, a route such as `server/api/sitemap.get.ts` can call `$fetch("/api/sitemap", { baseURL: apiBase })` or use an imported `ofetch` normally. Rehearsal forwards the incoming attempt marker only to the configured Laravel origin and does not follow redirects on that hop. It does not copy incoming cookies or capabilities. Automatic forwarding is not available on Nitro 3. For SSR mocks and opt-in cookie forwarding, keep using `useRehearsalFetch()` in Nuxt app code.
+With the module enabled on a Node Nitro 2 server, a route such as `server/api/sitemap.get.ts` can call `$fetch("/api/sitemap", { baseURL: apiBase })` or use an imported `ofetch` normally. Rehearsal forwards the incoming attempt marker only to the configured Laravel origin and does not follow redirects on that hop. It does not copy incoming cookies or capabilities. Automatic forwarding is not available on Nitro 3. Use `useRehearsalFetch()` for [opt-in session cookie forwarding](#sanctum-and-authenticated-ssr), not as a requirement for `nuxt.fake`.
+
+## Fake browser and SSR requests
+
+With the module installed and `NUXT_REHEARSAL_ENABLED=true` on the loopback Nuxt server, merge the fixtures with `mergeTests(test, nuxtTest)`. The Nuxt fixture uses the frontend `baseURL` by default; set the `nuxtURL` test option if your `baseURL` points to Laravel.
+
+```ts
+import { mergeTests } from "@playwright/test";
+import { nuxtTest, test } from "@sti3bas/rehearsal";
+
+const browserTest = mergeTests(test, nuxtTest);
+
+browserTest("renders search results", async ({ nuxt, page }) => {
+  await nuxt.fake({
+    "GET https://search.example.test/collections/*": { json: { hits: [] } },
+  });
+  await page.goto("/");
+  await nuxt.navigate(page, "/search?q=oak", { expect: /q=oak$/ });
+});
+```
+
+Prefer `nuxt.fake` for Nuxt browser and SSR fetches. It shares handlers defined in the test without putting rules in cookies. `laravel.route(...).respond(...)` is still available for Laravel-only browser interception and SSR calls through `useRehearsalFetch()`. Use `laravel.fake` instead when the request should reach Laravel before it is replaced.
+
+Use `nuxt.hold()` as a fake handler to pause matching requests in the browser or SSR. Wait for its `count()` to increase, then call `release()` to let those requests continue. Release SSR requests before the proxy's 10-second timeout. `nuxt.navigate(page, path, { state?, expect? })` uses the client router without reloading the document and waits for the destination URL. Vue Router apps can pass `state` to attach history state. See [the mocking guide](../concepts/mocking#nuxt-browser-and-ssr-fakes) for sequences, live callbacks, and passthrough.
 
 ## Typesense InstantSearch
 

@@ -1,4 +1,4 @@
-import type { Page, Request as BrowserRequest, Route } from "@playwright/test";
+import { expect, type Page, type Request as BrowserRequest, type Route } from "@playwright/test";
 import { FakeBridge, fakeBridgeHeader } from "./fake-bridge.js";
 import { encodeRouteResponse, mockResponse, wait, type FakeMethod, type FakeResponse } from "./routes.js";
 import { capabilityHeader, loopback, markerHeader } from "./transport.js";
@@ -9,6 +9,11 @@ export type NuxtFakeResponse<Json = unknown> = (FakeResponse<Json> & { once?: ne
 export type NuxtFakeHandler<Json = unknown> = (request: Request) => NuxtFakeResponse<Json> | Promise<NuxtFakeResponse<Json>>;
 export type NuxtFakeRule<Json = unknown> = NuxtFakeResponse<Json> | readonly NuxtFakeResponse<Json>[] | NuxtFakeHandler<Json>;
 export type NuxtFakeRules = Partial<Record<NuxtFakePattern, NuxtFakeRule>>;
+export type NuxtHold = NuxtFakeHandler & { release(): void; count(): number };
+export interface NuxtNavigationOptions {
+  state?: Record<string, string | number | boolean | null>;
+  expect?: string | RegExp;
+}
 
 interface Rule {
   method: string;
@@ -20,6 +25,7 @@ interface Rule {
 
 export class NuxtFakes {
   private rules: Rule[] = [];
+  private holds = new Set<NuxtHold>();
   private bridge = new FakeBridge();
   private connection?: Promise<{ port: number; token: string; id: string }>;
   private routePattern = /^https?:\/\//;
@@ -37,9 +43,57 @@ export class NuxtFakes {
 
   clearFakes() {
     this.rules = [];
+    for (const hold of this.holds) hold.release();
+  }
+
+  hold(): NuxtHold {
+    let release!: () => void;
+    const promise = new Promise<void>((resolve) => { release = resolve; });
+    let count = 0;
+    const hold = Object.assign(async () => {
+      count++;
+      await promise;
+      return passthrough as typeof passthrough;
+    }, {
+      release: () => {
+        this.holds.delete(hold);
+        release();
+      },
+      count: () => count,
+    });
+    this.holds.add(hold);
+    return hold;
+  }
+
+  async navigate(page: Page, path: string, options: NuxtNavigationOptions = {}) {
+    type Location = { path: string; query?: object; hash?: string; state?: NuxtNavigationOptions["state"] };
+    type Router = { push(to: string | Location): Promise<unknown>; resolve(to: string | Location): Location & { href: string } };
+    type VueRoot = Element & { __vue_app__?: { config: { globalProperties: { $router?: Router } } } };
+    const router = await page.waitForFunction(() => {
+      const roots = [document.querySelector("#__nuxt"), document.body, ...document.querySelectorAll("[data-v-app]")];
+      for (const root of roots) {
+        const router = (root as VueRoot | null)?.__vue_app__?.config.globalProperties.$router;
+        if (router) return router;
+      }
+    });
+    let href: string;
+    try {
+      href = await router.evaluate(async (router, { path, state }) => {
+        const { path: pathname, query, hash } = router!.resolve(path);
+        const destination = state ? { path: pathname, query, hash, state } : path;
+        const { href } = router!.resolve(destination);
+        await router!.push(destination);
+        return href;
+      }, { path, state: options.state });
+    } finally {
+      await router.dispose();
+    }
+    const target = options.expect ?? href;
+    await expect(page).toHaveURL(typeof target === "string" ? new URL(target, this.frontend).href : target);
   }
 
   async close() {
+    this.clearFakes();
     try {
       if (this.connection) await this.page.unroute(this.routePattern, this.intercept);
     } finally {

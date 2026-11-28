@@ -6,9 +6,11 @@ import { encodeHttpRules, type HttpFakeRules } from "./http.js";
 import { Mailbox } from "./mail.js";
 import { createModelQuery } from "./model.js";
 import { Queue, type DrainOptions, type DrainResult } from "./queue.js";
+import { Reverb } from "./reverb.js";
 import { capabilityHeader, loopback, markerCookie, markerHeader, protocol } from "./transport.js";
 import { claimRoute, encodeRouteResponse, fakeRoutePattern, matchesRoute, mockResponse, routePattern, wait, waitForRouteGate, type FakeCallback, type FakeResponse, type RouteResponse, type RouteTarget } from "./routes.js";
 import type { ArtisanInput, ArtisanName, BatchChecks, BatchFactory, BatchResults, FactoryAttributes, FactoryBuilder, FactoryModel, FactoryName, FactoryOptions, FactoryState, FakeArguments, FakeTarget, InputArguments, ModelQuery, OperationInput, OperationName, OperationOutput, ScheduleName } from "./schema.js";
+import { Typesense } from "./typesense-client.js";
 
 export type FactoryCall =
   | { state: string; args?: readonly unknown[] }
@@ -43,6 +45,7 @@ export class Laravel {
   private fakeBridge = new FakeBridge();
   private callbackFailure?: { error: unknown };
   readonly queue = new Queue(this);
+  readonly reverb = new Reverb(this);
   readonly http = {
     fake: (rules: HttpFakeRules, options: { preventStrayRequests?: boolean } = {}) =>
       this.operation<null>("http.fake", { rules: encodeHttpRules(rules), ...options }),
@@ -65,13 +68,15 @@ export class Laravel {
     private marker: string,
     private frontendOrigin = origin,
     private metadata: Record<string, unknown> = {},
+    private userEndpoint = "/api/user",
+    private userRequest = request,
   ) {}
 
   integrationMetadata(name: string): unknown {
     return Object.hasOwn(this.metadata, name) ? this.metadata[name] : undefined;
   }
 
-  typesense(): TypesenseClientConfig {
+  typesense(): Typesense {
     const scout = Object.values(this.metadata).find((value): value is TypesenseClientConfig => {
       const candidate = value as (Partial<TypesenseClientConfig> & { engine?: unknown }) | null;
       return candidate?.engine === "typesense" && typeof candidate.origin === "string"
@@ -79,7 +84,7 @@ export class Laravel {
     });
     if (!scout) throw new Error("Rehearsal Typesense is not enabled.");
     const { origin, collectionPrefix, searchKey } = scout;
-    return { origin, collectionPrefix, searchKey };
+    return new Typesense(origin, collectionPrefix, searchKey, this.request);
   }
 
   mailbox(recipient: string) {
@@ -235,6 +240,29 @@ export class Laravel {
     if (!context) throw new Error("Rehearsal login requires a browser context fixture.");
     if (!this.contexts.has(context)) await this.bindContext(context);
     return this.post<number | string>(context.request, "login", user);
+  }
+
+  async user<T = unknown>({
+    context = this.context, endpoint = this.userEndpoint, frontendOrigin = this.frontendOrigin,
+  }: { context?: BrowserContext; endpoint?: string; frontendOrigin?: string } = {}): Promise<T | null> {
+    const target = new URL(endpoint, this.origin);
+    if (!loopback(target) || target.origin !== this.origin || target.username || target.password) {
+      throw new Error("Rehearsal user requires an endpoint at the Laravel origin.");
+    }
+    const frontend = new URL(frontendOrigin);
+    if (!loopback(frontend)) throw new Error("Rehearsal user requires a loopback frontend origin.");
+    if (context && !this.contexts.has(context)) await this.bindContext(context);
+    const response = await (context?.request ?? this.userRequest).get(target.href, {
+      headers: { Accept: "application/json", Origin: frontend.origin, ...(context ? {} : { [markerHeader]: this.marker }) },
+      maxRedirects: 0,
+    });
+    try {
+      if (response.status() === 401) return null;
+      if (!response.ok()) throw new Error("Rehearsal user endpoint failed (HTTP " + response.status() + ").");
+      return await response.json() as T;
+    } finally {
+      await response.dispose();
+    }
   }
 
   async travel(value: string | Date) {

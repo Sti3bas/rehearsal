@@ -1,6 +1,15 @@
 # Mocks, fakes, and callbacks
 
-Choose the layer that needs to change. A browser or SSR mock bypasses Laravel's route, a route fake acts on a request that reaches Laravel, and an HTTP fake intercepts a request Laravel sends out. Callback routing is for real, signature-verified inbound callbacks.
+## Which fake should I use?
+
+| Request you want to replace | API |
+| --- | --- |
+| An incoming request that should reach Laravel, but not its real route handler | `laravel.fake` |
+| An outbound request made through Laravel's HTTP client | `laravel.http.fake` |
+| A Nuxt browser or SSR fetch that should use a live test handler | `nuxt.fake` |
+| A Laravel-bound browser request or a Nuxt SSR call using `useRehearsalFetch()` | `laravel.route(...).respond(...)` |
+
+Callback routing is for real, signature-verified inbound callbacks, not for faking responses.
 
 ## Mock Laravel routes
 
@@ -44,6 +53,20 @@ Keys are HTTP methods plus absolute URLs. A `*` matches any string; the query is
 Fakes belong to the fixture's Playwright page and SSR requests made by that page. `page.request`, `context.request`, and standalone `APIRequestContext` requests bypass Playwright page routing, so they do not get these fakes or transmit the SSR context. For SSR, a test-only header identifies the worker's loopback handler; Nitro removes it before calling application code, and never forwards it to the original destination. Rules are cleared between tests or manually with `nuxt.clearFakes()`. This proxy-back uses standard server-side fetch on Node/Nitro 2; requests made outside the browser's test context run normally.
 
 Playwright page routing handles only the first request in a browser redirect chain. To test SSR fakes on a redirect destination, navigate directly to that URL; if the request reaches Laravel, a Laravel route fake also works across redirects.
+
+Use `nuxt.hold()` to pause matching browser or SSR requests before they hit the real destination. The returned handler counts arrivals and lets the requests pass through when released. Release SSR requests before the proxy's 10-second timeout.
+
+```ts
+const pending = nuxt.hold();
+await nuxt.fake({ "GET https://search.example.test/collections/*": pending });
+const navigation = page.goto("/");
+await expect.poll(pending.count).toBeGreaterThan(0);
+pending.release();
+await navigation;
+await nuxt.navigate(page, "/search?q=oak", { expect: /q=oak$/ });
+```
+
+`nuxt.navigate(page, path, { state?, expect? })` runs a Nuxt router push and waits for the destination URL (or the provided string or regular expression). In an app using Vue Router, pass `state` to attach history state.
 
 `pause()` lets matched requests continue to Laravel after `release()`; with a response it returns that response instead. `waitForRequest({ timeout: 5000 })` waits until the first match (five seconds by default). Clearing a mock removes future matches, but does not release requests already waiting on its gate.
 
