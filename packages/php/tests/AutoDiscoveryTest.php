@@ -261,6 +261,7 @@ PHP);
 
     try {
         \Illuminate\Support\Facades\Route::get('/api/items/{item}/offers', static fn () => ['ok' => true]);
+        \Illuminate\Support\Facades\Route::get('/api/files/{path}', static fn () => [])->where('path', '.*');
         config([
             'rehearsal.callbacks' => ['discover' => true, 'paths' => [$dir]],
             'rehearsal.integrations' => [
@@ -279,6 +280,9 @@ PHP);
             'horizon.environments' => ['production' => ['sup-2' => ['queue' => ['processing', 'moderation']]]],
         ]);
         $this->app->register(ServiceProvider::class);
+
+        expect(\Sti3bas\Rehearsal\FakeRoutes::keys())->toContain('GET /api/files/**');
+        expect(\Sti3bas\Rehearsal\FakeRoutes::allows('GET', '/api/files/folder/item'))->toBeTrue();
 
         expect(\Sti3bas\Rehearsal\Callbacks::all())
             ->toHaveKey('/webhooks/demo', $ns.'\\StaticCallback')

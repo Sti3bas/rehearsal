@@ -18,10 +18,15 @@ final class FakeRoutes
         if ($configured === true || (is_array($configured) && ($configured['discover'] ?? false) === true)) {
             foreach (Route::getRoutes() as $route) {
                 $uri = '/'.ltrim($route->uri(), '/');
-                $paths = [(string) preg_replace('/\{[^}]+\}/', '*', $uri)];
+                $pattern = static fn (string $path): string => preg_replace_callback(
+                    '/\{([^}?]+)\??\}/',
+                    static fn (array $part): string => in_array($route->wheres[$part[1]] ?? null, ['.*', '.+'], true) ? '**' : '*',
+                    $path,
+                );
+                $paths = [$pattern($uri)];
                 while (preg_match('~/\{[^/{}]+\?\}$~D', $uri, $optional)) {
                     $uri = substr($uri, 0, -strlen($optional[0])) ?: '/';
-                    $paths[] = (string) preg_replace('/\{[^}]+\}/', '*', $uri);
+                    $paths[] = $pattern($uri);
                 }
                 foreach (array_intersect($route->methods(), self::METHODS) as $method) {
                     foreach ($paths as $path) {
