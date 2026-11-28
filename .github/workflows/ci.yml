@@ -3,6 +3,9 @@ name: Rehearsal
 on:
   push:
   pull_request:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
