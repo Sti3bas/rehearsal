@@ -116,13 +116,12 @@ final class TypesCommand extends Command
                 'date', 'datetime', 'immutable_date', 'immutable_datetime', 'hashed' => 'string',
                 'encrypted' => match ($argument) {
                     null => 'string',
-                    'array', 'json' => $this->phpType($argument),
+                    'array', 'json', 'collection' => $this->phpType('array'),
                     'object' => 'Record<string, unknown>',
-                    'collection' => 'unknown[]',
                     default => 'unknown',
                 },
                 'timestamp' => 'number',
-                'collection' => 'unknown[]',
+                'collection' => $this->phpType('array'),
                 default => $this->phpType($name),
             };
             if ($type !== 'unknown') {

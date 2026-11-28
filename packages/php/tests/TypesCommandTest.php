@@ -62,7 +62,7 @@ it('emits the public allowlists and best-effort model and operation types', func
         expect($output)
             ->toContain('"modelColumns": "id" | "price" | "title" | "sku";')
             ->toContain('"published_at"?: string | null;')
-            ->toContain('"metadata"?: unknown[] | Record<string, unknown> | null;', '"settings"?: Record<string, unknown> | null;', '"tags"?: unknown[] | null;')
+            ->toContain('"metadata"?: unknown[] | Record<string, unknown> | null;', '"settings"?: Record<string, unknown> | null;', '"tags"?: unknown[] | Record<string, unknown> | null;', '"labels"?: unknown[] | Record<string, unknown> | null;')
             ->not->toContain('"display_title"');
         expect($input)->toContain('"metadata"?: unknown[] | Record<string, unknown> | null;', '"published_at"?: number | null;');
         expect($dynamic)->not->toContain('"factoryRequired"');
@@ -72,6 +72,16 @@ it('emits the public allowlists and best-effort model and operation types', func
             unlink($path);
         }
     }
+});
+
+it('serializes collections with string keys as JSON objects', function () {
+    config(['app.key' => 'base64:'.base64_encode(str_repeat('a', 32))]);
+    $listing = (new TypeTestListing)->forceFill([
+        'tags' => ['color' => 'blue'],
+        'labels' => ['size' => 'small'],
+    ]);
+
+    expect($listing->toJson())->toBe('{"tags":{"color":"blue"},"labels":{"size":"small"}}');
 });
 
 /**
@@ -93,6 +103,7 @@ final class TypeTestListing extends Model
         'metadata' => 'encrypted:array',
         'settings' => 'encrypted:object',
         'tags' => 'encrypted:collection',
+        'labels' => 'collection',
     ];
 
     public function setDisplayTitleAttribute(string $value): void
